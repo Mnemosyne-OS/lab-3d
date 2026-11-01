@@ -1,0 +1,40 @@
+{
+  "name": "@mnemosyne-plugins/lab-3d",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Lab 3D: a catalogue of 3D experiments (video to 3D object, decors in relief, a splat viewer) that runs in any browser and lights up its integrated engines inside Mnemosyne OS (doc 166).",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "dev:cartridge": "vite",
+    "build": "tsc && vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.eslint.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@mnemosyne_os/cartridge-sdk": "0.6.0",
+    "@sparkjsdev/spark": "2.3.1",
+    "qrcode": "1.5.4",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "three": "0.186.1"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "6.4.8",
+    "@testing-library/react": "16.0.0",
+    "@types/qrcode": "1.5.6",
+    "@types/react": "18.3.3",
+    "@types/react-dom": "18.3.0",
+    "@types/three": "0.180.0",
+    "@vitejs/plugin-react": "4.3.1",
+    "jsdom": "25.0.1",
+    "typescript": "5.5.3",
+    "vite": "5.4.1",
+    "vitest": "3.2.4"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Mnemosyne-OS/lab-3d"
+  }
+}

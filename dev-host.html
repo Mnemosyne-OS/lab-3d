@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lab 3D · faux hôte (dev)</title>
+<link rel="icon" href="data:,">
+<!--
+  DEV ONLY, never shipped (vite builds index.html only). Plays the Mnemosyne
+  host in a plain browser: loads the cartridge in an iframe and answers its
+  bridge calls from ./dev-fixtures (git-ignored: real objects copied from
+  ~/.mnemosyne/generations/splats, with an index.json listing them, the shape
+  Objets 3D's dev host reads).
+
+  A RUNNING job is SIMULATED here, on the files of a real object (index.running),
+  so each step can be looked at without COLMAP: its counts are made up by this
+  page, never by the app. Parameters:
+    ?job=frames|poses|coverage|matte|train|done|failed|needsConfirm  start a job at that step
+    ?at=<seconds>     freeze the simulated time inside the step (for a screenshot)
+    ?speed=<n>        run the simulation n times faster
+    ?empty=1          no object yet;  ?engine=missing  the 3D engine not installed
+    ?refused=1        the host refuses the objects (a permission not granted)
+    ?lang=en|fr|es    the host's language (default fr)
+    ?align=fresh      no pair aligned yet: « Put them in one frame » runs the simulation
+    ?alignStep=features|matching|placing|measuring  an alignment frozen at that step
+    ?phone=1          the phone capture (doc 176): two waiting series, the older one
+                      already made into 3D (named after a fixture's folder); its photos
+                      are the running object's frames
+
+  An ALIGNMENT is simulated too (its steps, about 6 s), but its result is the
+  REAL file the host's own job measured outside the app on these objects
+  (align-<refId>.json beside the moved object). A pair without such a file
+  ends in DEV_NO_FIXTURE, said as it is.
+-->
+<style>html,body{margin:0;height:100%;background:#03060b}iframe{border:0;width:100%;height:100%;display:block}</style>
+</head>
+<body>
+<iframe id="cart" src="./index.html"></iframe>
+<script type="module">
+const q = new URLSearchParams(location.search);
+const F = './dev-fixtures/';
+const index = await (await fetch(F + 'index.json')).json();
+const lang = q.get('lang') ?? 'fr';
+// ?place=<part of an id>: that scene is listed and read as a place, opened from inside (doc 166 §14).
+const placeOf = q.get('place');
+const asPlace = (id) => !!placeOf && id.includes(placeOf);
+const objects = q.has('empty') ? [] : index.objects.map((o) => (asPlace(o.id) ? { ...o, scope: 'place' } : o));
+const RUN = index.running;
+const dirs = index.dirs[RUN] ?? {};
+const speed = Number(q.get('speed') ?? 1);
+const frozen = q.has('at') ? Number(q.get('at')) : null;
+/** The dive's levels « painted » here: the window sent, by its made-up path. */
+const levels = new Map();
+const PHONE = q.has('phone');
+const SERIES_DIR = 'C:\\Users\\tony\\AppData\\Roaming\\phone-capture\\series\\';
+const phoneState = { active: false, count: 0, startedAt: null, seriesId: null, series: [
+  ...(objects[0] ? [{ id: objects[0].id.slice(16), photos: 76, startedAt: Date.now() - 2 * 86400e3 }] : []),
+  { id: '2026-10-26_11-40-58', photos: 72, startedAt: null },
+].map((x) => ({ ...x, dir: SERIES_DIR + x.id })) };
+const phoneStatus = () => ({
+  active: phoneState.active, url: phoneState.active ? 'https://192.168.1.101:50000/c/' + 'a'.repeat(32) : null,
+  address: phoneState.active ? '192.168.1.101' : null, seriesId: phoneState.seriesId, count: phoneState.count,
+  phoneSeen: phoneState.active, startedAt: phoneState.startedAt, lastPhotoAt: null,
+  // The PC's certificate (doc 176 §22); ?trusted=1: the phone already trusts it.
+  caUrl: phoneState.active ? 'http://192.168.1.101:50001/mnemosyne-os.crt' : null, phoneTrusted: phoneState.active && q.has('trusted') ? true : null,
+  addresses: [{ name: 'Wi-Fi', address: '192.168.1.101' }], series: phoneState.series,
+});
+// The décor the host « draws » and the file dialog « picks »: Tony's oak table, drawn once on credits.
+const DECOR = 'C:/Users/tony/.mnemosyne/generations/gen-1792727294771-1b74157f.png';
+let hostState = null;
+let granted = false;
+
+// The simulated job: one step after the other, each with its own clock.
+const ORDER = ['frames', 'poses', 'coverage', 'matte', 'train', 'done'];
+const READ = (dirs['frames-all'] ?? []).length || 160;
+const KEPT = (dirs.frames ?? []).length || 100;
+let job = null;
+let phase = { step: null, at: 0 };
+function startJob(step) {
+  const now = Date.now();
+  job = {
+    id: RUN, video: 'C:\\Users\\tony\\Videos\\Bottines salon.mp4', quality: 'full', scope: q.get('jobScope') ?? 'object', source: 'video',
+    step, startedAt: now - 95_000, stepStartedAt: now, framesTotal: null, framesKept: null, framesSeen: null, posesPlaced: null, placer: null,
+    blurRead: null, coverageDeg: null, framesMatted: null, matteTotal: null, trainStep: null, trainStepAt: null, trainSteps: 30000, liveStep: null,
+    colmap: null, cuda: true, outDir: 'C:\\Users\\tony\\.mnemosyne\\generations\\splats\\' + RUN, error: null, redoOf: null,
+  };
+  phase = { step, at: now };
+  const past = ORDER.slice(0, ORDER.indexOf(step));
+  if (past.includes('frames') || step === 'needsConfirm' || step === 'failed') Object.assign(job, { framesSeen: READ, framesTotal: READ, framesKept: KEPT, blurRead: true });
+  if (past.includes('poses') || step === 'needsConfirm') Object.assign(job, { posesPlaced: KEPT, placer: 'global' });
+  if (past.includes('coverage')) Object.assign(job, { coverageDeg: 334 });
+  if (past.includes('matte')) Object.assign(job, { framesMatted: KEPT, matteTotal: KEPT });
+  if (step === 'done') Object.assign(job, { trainStep: 30000, trainStepAt: now - 2000, liveStep: 30000 });
+  if (step === 'failed') Object.assign(job, { posesPlaced: 12, error: 'POSES_FAILED: 12/100' });
+  if (step === 'needsConfirm') Object.assign(job, { coverageDeg: 125 });
+}
+const pts = (name) => 900 + ((parseInt(name.slice(1, 6), 10) * 7919) % 1500);
+// The alignment job (doc 163 lot 5).
+const ALIGN_STEPS = ['features', 'matching', 'placing', 'measuring'];
+let alignJob = null;
+if (q.get('align') === 'fresh') for (const o of objects) o.alignedTo = [];
+async function alignStart(refId, movedId) {
+  if (alignJob && ALIGN_STEPS.includes(alignJob.step)) throw new Error('ALREADY_RUNNING');
+  if (refId === movedId) throw new Error('SAME_OBJECT');
+  const now = Date.now();
+  const aj = { refId, movedId, step: q.get('alignStep') ?? 'features', startedAt: now, stepStartedAt: now, summary: null, error: null };
+  alignJob = aj;
+  if (q.has('alignStep')) return { ...aj };
+  const has = (await fetch(`${F}${movedId}/align-${refId}.json`, { method: 'HEAD' })).ok;
+  ALIGN_STEPS.forEach((st, i) => setTimeout(() => { if (alignJob === aj && ALIGN_STEPS.includes(aj.step)) { aj.step = st; aj.stepStartedAt = Date.now(); } }, (i * 1500) / speed));
+  setTimeout(() => {
+    if (alignJob !== aj || !ALIGN_STEPS.includes(aj.step)) return;
+    if (!has) { aj.step = 'failed'; aj.error = 'DEV_NO_FIXTURE: no alignment measured for this pair in the fake host'; return; }
+    aj.step = 'done';
+    const o = objects.find((x) => x.id === movedId);
+    if (o) o.alignedTo = [...new Set([...(o.alignedTo ?? []), refId])];
+  }, 6000 / speed);
+  return { ...aj };
+}
+function next(step) { phase = { step, at: Date.now() }; job.step = step; job.stepStartedAt = Date.now(); }
+function tick() {
+  if (!job || !ORDER.includes(job.step) || job.step === 'done') return;
+  const t = frozen ?? ((Date.now() - phase.at) / 1000) * speed;
+  const kept = dirs.frames ?? [];
+  if (job.step === 'frames') {
+    job.framesSeen = Math.min(READ, Math.floor(t * 30));
+    if (job.framesSeen >= READ) Object.assign(job, { framesTotal: READ, framesKept: KEPT, blurRead: true });
+    if (frozen === null && t > 7.5) next('poses');
+  } else if (job.step === 'poses') {
+    const f = Math.min(KEPT, Math.floor(t * 14));
+    if (t < 7.2) {
+      const points = {};
+      kept.slice(0, f).forEach((n) => { points[n] = pts(n); });
+      job.colmap = { phase: 'features', done: f, of: KEPT, points };
+    } else if (t < 13) job.colmap = { ...job.colmap, phase: 'matching', done: Math.min(4, 1 + Math.floor((t - 7.2) / 1.5)), of: 4 };
+    else if (t < 18) job.colmap = { ...job.colmap, phase: 'mapping', done: null, of: null };
+    else if (frozen === null) { Object.assign(job, { posesPlaced: KEPT, placer: 'global', colmap: null }); next('coverage'); }
+  } else if (job.step === 'coverage') {
+    if (t > 0.6) job.coverageDeg = 334;
+    if (frozen === null && t > 2) next(job.scope === 'object' ? 'matte' : 'train');
+  } else if (job.step === 'matte') {
+    job.matteTotal = KEPT;
+    job.framesMatted = Math.min(KEPT, Math.floor(t * 1.6));
+    if (frozen === null && job.framesMatted >= KEPT) { next('train'); job.trainStep = 0; job.trainStepAt = Date.now(); }
+  } else if (job.step === 'train') {
+    const s = Math.min(30000, Math.floor(t / 3) * 1000);
+    if (s !== job.trainStep) Object.assign(job, { trainStep: s, trainStepAt: Date.now() - (frozen !== null ? 7000 : 0), liveStep: s || null });
+    if (frozen === null && s >= 30000) next('done');
+  }
+}
+setInterval(tick, 250);
+if (q.get('job')) { startJob(q.get('job')); tick(); }
+
+async function piece(path, offset) {
+  const res = await fetch(F + path);
+  if (!res.ok) throw new Error('NOT_FOUND');
+  let all = new Uint8Array(await res.arrayBuffer());
+  if (path.endsWith('/manifest.json') && asPlace(path)) {
+    all = new TextEncoder().encode(JSON.stringify({ ...JSON.parse(new TextDecoder().decode(all)), scope: 'place' }));
+  }
+  const part = all.subarray(offset, offset + 8 * 1024 * 1024);
+  let bin = '';
+  for (let i = 0; i < part.length; i += 0x8000) bin += String.fromCharCode(...part.subarray(i, i + 0x8000));
+  return { base64: btoa(bin), offset, length: part.length, total: all.length };
+}
+function framesOf(id, dir) {
+  const own = index.dirs[id] ?? {};
+  // The masked frames the fixtures hold stand for all of them: the simulation names its own.
+  const masked = (own['frames-masked'] ?? []).length ? (own.frames ?? []).map((n) => n.replace(/\.jpg$/, '.png')) : [];
+  if (id === RUN && job) {
+    if (dir === 'all') return (own['frames-all'] ?? []).slice(0, job.framesSeen ?? 0);
+    if (dir === 'frames') return job.framesKept ? own.frames ?? [] : [];
+    if (dir === 'masked') return masked.slice(0, job.framesMatted ?? 0);
+  }
+  return dir === 'all' ? own['frames-all'] ?? [] : dir === 'masked' ? masked : own.frames ?? [];
+}
+async function answer(action, p) {
+  switch (action) {
+    case 'getStatus': return { vaultReady: true, systemReady: true, platform: 'win32', capabilities: ['splat', 'image.depth', ...(PHONE ? ['phone.photos'] : [])] };
+    case 'phoneCapture.status': return phoneStatus();
+    case 'phoneCapture.start': {
+      const go = phoneState.series.find((x) => x.id === p.continueSeries);
+      Object.assign(phoneState, { active: true, startedAt: Date.now(), seriesId: go ? go.id : '2026-10-26_19-30-00', count: go ? go.photos : 0 });
+      return phoneStatus();
+    }
+    case 'phoneCapture.stop': {
+      // The phone « took » 34 photos meanwhile.
+      const closed = { id: phoneState.seriesId, photos: phoneState.count + 34, startedAt: phoneState.startedAt, dir: SERIES_DIR + phoneState.seriesId };
+      phoneState.series = [...phoneState.series.filter((x) => x.id !== closed.id), closed];
+      Object.assign(phoneState, { active: false, count: 0, startedAt: null, seriesId: null });
+      return closed;
+    }
+    case 'phoneCapture.destinations': return { vaults: [] };
+    case 'phoneCapture.discard': phoneState.series = phoneState.series.filter((x) => x.id !== p.seriesId); return null;
+    case 'splat.list':
+      if (q.has('refused')) throw new Error('Unauthorized: This cartridge does not have the "dialog:open" permission.');
+      return { objects };
+    case 'splat.read': {
+      // The running job's live preview and extraction folder, as main names them.
+      let file = p.file === 'work/exports/live.spz' ? 'scene.spz' : p.file.replace(/^work\/all\//, 'frames-all/');
+      // Only some cut-outs were copied: the others show one of them, so the grid still fills.
+      const m = /^frames-masked\/(f\d{5})\.png$/.exec(file);
+      const have = index.dirs[p.id]?.['frames-masked'] ?? [];
+      if (m && have.length && !have.includes(m[1] + '.png')) file = 'frames-masked/' + have[parseInt(m[1].slice(1), 10) % have.length];
+      return piece(p.id + '/' + file, p.offset ?? 0);
+    }
+    case 'splat.status': return {
+      supported: true, unsupportedReason: null, installed: q.get('engine') !== 'missing', ffmpegInstalled: true, framesReader: 'ffmpeg',
+      objectOnly: 'ready', job: job ? { ...job } : null,
+    };
+    case 'splat.frames': return { names: framesOf(p.id, p.dir) };
+    case 'splat.pickVideo': return { path: 'C:/Users/tony/Videos/Bottines salon.mp4' };
+    case 'splat.pickPhotos': return { path: 'C:/Users/tony/Pictures/bottines' };
+    case 'splat.start': startJob('frames'); job.source = p.photosDir ? 'photos' : 'video'; job.quality = p.quality; job.scope = p.scope; return { ...job };
+    case 'splat.cancel': job.step = 'cancelled'; return { ok: true };
+    case 'splat.align': return alignStart(p.refId, p.movedId);
+    case 'splat.alignStatus': return alignJob ? { ...alignJob } : null;
+    case 'splat.alignCancel':
+      if (!alignJob || !ALIGN_STEPS.includes(alignJob.step)) throw new Error('NOT_RUNNING');
+      alignJob.step = 'cancelled';
+      return { ok: true };
+    case 'splat.continue': next('matte'); return { ok: true };
+    case 'settings.open': return { page: p.page };
+    // The décor (doc 166 lot 5). Nothing here draws or bills: the picture is a real one
+    // drawn once on credits and copied to ./dev-fixtures/decors.
+    //   ?decor=refused  the permission is refused until permissions.refresh;  ?decor=broke  no credits left
+    //   ?pick=none      the system's file dialog is closed without a choice
+    case 'image.generate': {
+      await new Promise((r) => setTimeout(r, 2500));
+      if (q.get('decor') === 'refused' && !granted) throw new Error('Unauthorized: This cartridge does not have the "image:generate" permission.');
+      if (q.get('decor') === 'broke') throw new Error('CREDITS_EXHAUSTED');
+      // A dive's level (doc 166 §15.5): the window sent comes back as the level, unchanged, so the
+      // alignment can be looked at without credits. Kept here, read back by its made-up path.
+      if (p.editImageData) { const path = `C:/gen/level-${levels.size + 1}.jpg`; levels.set(path, p.editImageData); return { path, model: p.modelId, billedUsdMicro: 61000 }; }
+      return { path: DECOR, model: p.modelId, billedUsdMicro: 39000 };
+    }
+    // ?pick=none  the dialog is closed;  ?pick=<file name>  that picture of ./dev-fixtures/decors is chosen
+    case 'dialog.selectFile': return q.get('pick') === 'none' ? null : q.get('pick') ? DECOR.replace(/[^/]+$/, q.get('pick')) : DECOR;
+    // The décor's depth, measured once with the real model beside the décor in ./dev-fixtures/decors.
+    //   ?depth=missing  the model is not installed;  ?depth=noengine  the image engine is not
+    case 'image.depthStatus': return { engine: q.get('depth') !== 'noengine', weights: q.get('depth') !== 'missing', downloadBytes: 99173660 };
+    case 'image.depth': {
+      await new Promise((r) => setTimeout(r, 800));
+      if (q.get('depth') === 'missing') throw new Error('DEPTH_NOT_INSTALLED');
+      // Like the image engine v15: every depth here is upright (made from the picture as it is shown).
+      return { path: String(p.path).replace(/\.(png|jpe?g)$/i, '-depth.png'), upright: true };
+    }
+    case 'dialog.readFile': {
+      if (levels.has(p.filePath)) return { success: true, isBinary: true, content: levels.get(p.filePath) };
+      // A photo of a waiting phone series: the running object's frame of the same number.
+      const shot = /series[\\/][^\\/]+[\\/](\d{3})\.jpg$/.exec(String(p.filePath));
+      if (shot && dirs.frames?.length) {
+        const blob = await (await fetch(F + RUN + '/frames/' + dirs.frames[(Number(shot[1]) - 1) % dirs.frames.length])).blob();
+        return { success: true, isBinary: true, content: await new Promise((r) => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(blob); }) };
+      }
+      const res = await fetch(F + 'decors/' + String(p.filePath).split(/[\\/]/).pop());
+      if (!res.ok) return { success: false, error: 'NOT_FOUND' };
+      const blob = await res.blob();
+      const url = await new Promise((r) => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(blob); });
+      return { success: true, isBinary: true, content: url };
+    }
+    case 'state.get': return { state: hostState };
+    case 'state.set': hostState = p.state; return { ok: true };
+    case 'permissions.refresh': granted = true; return { granted: Object.fromEntries((p.permissions ?? []).map((k) => [k, true])) };
+    default: throw new Error('mock host: ' + action + ' not mocked');
+  }
+}
+const frame = document.getElementById('cart');
+frame.addEventListener('load', () => {
+  // Sent again a little later: React registers its listener after the first paint.
+  const send = () => frame.contentWindow.postMessage({ type: 'MNEMO_CONFIG_UPDATE', theme: 'dark', lang }, '*');
+  send(); setTimeout(send, 300); setTimeout(send, 1500);
+});
+window.addEventListener('message', async (e) => {
+  const d = e.data;
+  if (!d || d.type !== 'MNEMO_PLUGIN_REQUEST') return;
+  const reply = (body) => e.source.postMessage({ type: 'MNEMO_PLUGIN_REPLY', messageId: d.messageId, ...body }, '*');
+  try { reply({ success: true, data: await answer(d.action, d.payload ?? {}) }); }
+  catch (err) { reply({ success: false, error: String(err.message ?? err) }); }
+});
+</script>
+</body>
+</html>

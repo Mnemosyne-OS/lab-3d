@@ -1,0 +1,61 @@
+{
+  "name": "@mnemosyne-plugins/lab-3d",
+  "displayName": "Lab 3D",
+  "version": "0.1.0",
+  "category": "Creation",
+  "icon": "icon.svg",
+  "license": "MIT",
+  "repository": "https://github.com/Mnemosyne-OS/lab-3d",
+  "updateStrategy": "git",
+  "description": "A catalogue of 3D experiments: a splat viewer that runs in any browser, and inside Mnemosyne OS the library of 3D objects and the engine that turns a video into one.",
+  "descriptionI18n": {
+    "en": "A catalogue of 3D experiments: a splat viewer that runs in any browser, and inside Mnemosyne OS the library of 3D objects and the engine that turns a video into one.",
+    "fr": "Un catalogue d'expériences 3D : une visionneuse de splats qui tourne dans tout navigateur, et dans Mnemosyne OS la bibliothèque des objets 3D et le moteur qui fait d'une vidéo un objet 3D.",
+    "es": "Un catálogo de experimentos 3D: un visor de splats que funciona en cualquier navegador y, dentro de Mnemosyne OS, la biblioteca de objetos 3D y el motor que convierte un vídeo en un objeto 3D."
+  },
+  "keywords": [
+    "3d",
+    "lab",
+    "splat",
+    "gaussian splat",
+    "viewer",
+    "visionneuse",
+    "visor",
+    "objet 3d",
+    "objeto 3d",
+    "photogrammetry"
+  ],
+  "permissions": [
+    "dialog:open",
+    "image:generate",
+    "phone:capture"
+  ],
+  "entrypoints": {
+    "renderer": "index.html"
+  },
+  "widgets": [
+    {
+      "id": "lab-3d-main",
+      "icon": "🧪",
+      "name": "Lab 3D",
+      "route": "index.html",
+      "defaultWidth": 1180,
+      "defaultHeight": 780
+    }
+  ],
+  "ui": {
+    "locations": [
+      "sidebar",
+      "desktop-icon"
+    ],
+    "label": "Lab 3D",
+    "defaultWindow": {
+      "width": 1180,
+      "height": 780,
+      "minWidth": 640,
+      "minHeight": 480
+    },
+    "icon": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"9.5\"/><circle cx=\"12\" cy=\"12\" r=\"5.5\" stroke-dasharray=\"3 2.5\"/><circle cx=\"12\" cy=\"12\" r=\"1.8\" fill=\"currentColor\"/></svg>",
+    "tooltip": "Lab 3D: a catalogue of 3D experiments"
+  }
+}

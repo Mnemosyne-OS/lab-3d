@@ -1,0 +1,48 @@
+/*
+ * Lab 3D — design tokens (doc 166).
+ *
+ * The look Tony asked for on 22/10 (« whaou, super Jarvis sur les étapes, effet
+ * lumineux ») inside the house rules (style-cartouche):
+ *   ✦ glass everywhere: the dark-veil variant of the skill, glass made of LIGHT,
+ *     never a solid-coloured button; the main action is glass tinted green;
+ *   ✦ green is what is chosen and what is done (a step passed, a tile picked),
+ *     cyan is the HUD's light (lines, the step in progress, readouts);
+ *   ✦ halos are box-shadows and gradients, never an animated `filter` on a large
+ *     surface: Spark's WebGL shares the graphics card with the page;
+ *   ✦ `prefers-reduced-motion` stops every pulse, sweep and spin.
+ * The app is its own world (it runs outside Mnemosyne too): it does not take
+ * the host's theme, it brings its own dark stage.
+ */
+:root {
+  --lab-bg: #03060b;
+  --lab-bg-2: #07101a;
+  --lab-ink: #e4f8ff;
+  --lab-dim: rgba(196, 228, 242, 0.62);
+  --lab-faint: rgba(196, 228, 242, 0.34);
+
+  --lab-cyan: #42e5ff;
+  --lab-cyan-soft: rgba(66, 229, 255, 0.16);
+  --lab-cyan-line: rgba(66, 229, 255, 0.42);
+  --lab-green: #3fe08f;
+  --lab-green-soft: rgba(63, 224, 143, 0.18);
+  --lab-amber: #ffbe55;
+  --lab-red: #ff6273;
+
+  /* Glass made of light, over the dark stage (style-cartouche §1, dark veil). */
+  --glass-fill: color-mix(in srgb, #fff 6%, transparent);
+  --glass-fill-hover: color-mix(in srgb, #fff 11%, transparent);
+  --glass-edge: color-mix(in srgb, var(--lab-cyan) 24%, transparent);
+  --glass-shine: color-mix(in srgb, #fff 34%, transparent);
+  --glass-blur: blur(16px) saturate(170%);
+  --as-chosen: var(--lab-green);
+
+  --glow-cyan: 0 0 0 1px var(--lab-cyan-line), 0 0 22px -4px var(--lab-cyan);
+  --glow-green: 0 0 0 1px color-mix(in srgb, var(--lab-green) 60%, transparent), 0 0 22px -4px var(--lab-green);
+
+  --radius: 14px;
+  --radius-s: 10px;
+  --mono: ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, 'Helvetica Neue', Arial, sans-serif;
+
+  color-scheme: dark;
+}
