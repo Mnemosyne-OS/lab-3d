@@ -10,7 +10,7 @@
  *
  * @module features/create/CreateTab
  */
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { JobView, Scope } from '../../core/model';
 import { doors, isPermissionRefusal, jobObjectId, type Quality } from '../../host/doors';
 import { hasCapability, inMnemosyne, type HostState } from '../../host/hostState';
@@ -76,6 +76,14 @@ export function CreateTab({ w, lang, host, gallery, status, refresh, shown = tru
 
   const say = (err: unknown) => setError(isPermissionRefusal(err) ? w.create.refused : describeError(err instanceof Error ? err.message : String(err), w.create.errors));
 
+  // Back on screen, the host is asked again: a job started while this view was hidden (« Resume »
+  // in the viewer) was not here, and the stale finished job offered to start what already ran (13/11).
+  const wasShown = useRef(shown);
+  useEffect(() => {
+    if (shown && !wasShown.current) void refresh();
+    wasShown.current = shown;
+  }, [shown, refresh]);
+
   const engine = status.state === 'ready' ? status.engine : null;
   const job = engine?.job ?? null;
   // What the host said it makes: a host older than places made a scene of a place asked.
@@ -114,9 +122,15 @@ export function CreateTab({ w, lang, host, gallery, status, refresh, shown = tru
     setPhone(false);
   };
 
+  // One action at a time, until the host's new state is read: a second click while the first was on
+  // its way asked the host again (13/11: « Keep now » pressed three times, NOTHING_TO_KEEP twice).
+  const [acting, setActing] = useState(false);
+
   // The same video or folder again, on the quick setting: less asked of the card (doc 176 §18).
   const retryQuick = async (failed: JobView) => {
+    if (acting) return;
     setError(null);
+    setActing(true);
     try {
       setPutAway(failed.id);
       const n = frames === DEFAULT_FRAMES ? undefined : frames;
@@ -127,20 +141,44 @@ export function CreateTab({ w, lang, host, gallery, status, refresh, shown = tru
     } catch (err) {
       console.warn('[lab-3d] quick retry failed:', err);
       say(err);
+    } finally {
+      setActing(false);
     }
   };
 
   const act = async (what: 'continue' | 'cancel' | 'keep') => {
-    if (!job) return;
+    if (!job || acting) return;
     setError(null);
+    setActing(true);
     try {
       if (what === 'continue') await doors.continueJob(job.id);
       else if (what === 'keep') await doors.keepNow(job.id);
       else await doors.cancel(job.id);
+    } catch (err) {
+      const why = err instanceof Error ? err.message : String(err);
+      // The job ended between the click and the host (kept, stopped, finished): nothing failed, the new state says it.
+      if (!/NO_SUCH_JOB/.test(why)) {
+        console.warn(`[lab-3d] ${what} failed:`, err);
+        say(err);
+      }
+    } finally {
+      try { await refresh(); } finally { setActing(false); }
+    }
+  };
+
+  // A paused job, done: it goes on from its step as a new version, which is the job shown next.
+  const resume = async (paused: JobView) => {
+    if (acting) return;
+    setError(null);
+    setActing(true);
+    try {
+      await doors.resume(jobObjectId(paused));
       await refresh();
     } catch (err) {
-      console.warn(`[lab-3d] ${what} failed:`, err);
+      console.warn('[lab-3d] resume failed:', err);
       say(err);
+    } finally {
+      setActing(false);
     }
   };
 
@@ -184,7 +222,7 @@ export function CreateTab({ w, lang, host, gallery, status, refresh, shown = tru
   } else if (job && jobGallery === gallery && job.step !== 'cancelled' && putAway !== job.id) {
     screen = (
       <>
-        <JobStage job={job} w={w} lang={lang} now={now} onAct={(a) => void act(a)}
+        <JobStage job={job} w={w} lang={lang} now={now} acting={acting} onAct={(a) => void act(a)}
           onView={() => { setPutAway(job.id); onView(jobObjectId(job)); }} onPutAway={() => setPutAway(job.id)}
           onAddPhotos={job.source === 'photos' && hasCapability(host, PHONE_CAPABILITY)
             // A series waiting in the app is named by its folder; the host refuses any other.
@@ -196,6 +234,7 @@ export function CreateTab({ w, lang, host, gallery, status, refresh, shown = tru
             }
             : undefined}
           onRetryQuick={() => void retryQuick(job)}
+          onResume={() => void resume(job)}
           onPhone={hasCapability(host, PHONE_CAPABILITY) ? () => { setPhoneContinue(null); setPhoneFresh(true); setPhone(true); } : undefined}
           afterDone={job.source === 'photos' && hasCapability(host, PHONE_CAPABILITY)
             ? <SeriesAfterJob w={w} gallery={gallery} photosDir={job.video} />

@@ -18,6 +18,8 @@ import { sdk } from './sdk';
 export const HOST_TIMEOUT_MS = 15_000;
 /** One piece of a scene is up to 8 MB through the bridge. */
 export const PIECE_TIMEOUT_MS = 60_000;
+/** The host's own ceiling is 60 s for the bin: this window waits a little longer. */
+export const REMOVE_TIMEOUT_MS = 70_000;
 
 /** The frame folders a running job fills, in order: `all` while the video is read, `frames` the kept, `masked` the cut-outs. */
 export type FrameDir = 'all' | 'frames' | 'masked';
@@ -49,8 +51,25 @@ export const doors = {
   frames: (id: string, dir: FrameDir) => sdk.invoke<{ names: string[] }>('splat.frames', { id, dir }, HOST_TIMEOUT_MS),
   continueJob: (id: string) => sdk.invoke<unknown>('splat.continue', { id }, HOST_TIMEOUT_MS),
   cancel: (id: string) => sdk.invoke<unknown>('splat.cancel', { id }, HOST_TIMEOUT_MS),
+  /**
+   * The whole object to the recycle bin, on a click in this window
+   * (NOT_FROM_A_GESTURE otherwise); OBJECT_BUSY while a job makes it.
+   */
+  remove: (id: string) => sdk.invoke<{ removed: string }>('splat.remove', { id }, REMOVE_TIMEOUT_MS),
   /** Stop Brush and keep its last object; a host older than it refuses the action. */
   keepNow: (id: string) => sdk.invoke<unknown>('splat.keepNow', { id }, HOST_TIMEOUT_MS),
+  /** The same object made again from its frames and placement, with another quality: a new version. */
+  redo: (id: string, quality: Quality, scope: Scope) => sdk.invoke<JobView>('splat.redo', { id, quality, scope }, HOST_TIMEOUT_MS),
+  /**
+   * A paused object continued from the step it was paused at, to the total it was started with:
+   * a new version, the paused one stays. A host without the action refuses (NOT_A_HOST_ACTION).
+   */
+  resume: (id: string) => sdk.invoke<JobView>('splat.resume', { id }, HOST_TIMEOUT_MS),
+  /**
+   * A place made again with a day's photos placed in its model, its frames fixed (doc 166 §16.y):
+   * a new version, the place stays. A host without the action refuses (NOT_A_HOST_ACTION).
+   */
+  complete: (id: string, photos: string[], quality: Quality) => sdk.invoke<JobView>('splat.complete', { id, photos, quality }, HOST_TIMEOUT_MS),
   /**
    * Put two dates of one place in one frame (doc 163 lot 5): about a minute of
    * the graphics card, so the host takes it only from a click in this window
@@ -59,6 +78,14 @@ export const doors = {
   align: (refId: string, movedId: string) => sdk.invoke<AlignJob>('splat.align', { refId, movedId }, HOST_TIMEOUT_MS),
   alignStatus: () => sdk.invoke<AlignJob | null>('splat.alignStatus', undefined, HOST_TIMEOUT_MS),
   alignCancel: () => sdk.invoke<unknown>('splat.alignCancel', undefined, HOST_TIMEOUT_MS),
+  /**
+   * The photos of one moment placed in a place's model (doc 166 §16): a job of
+   * the graphics card, started on a click in this window (NOT_FROM_A_GESTURE
+   * otherwise), one at a time (ALREADY_RUNNING, SPLAT_JOB_RUNNING). Read with placeStatus.
+   */
+  placePhotos: (placeId: string, photos: readonly string[]) => sdk.invoke<PlaceView>('splat.placePhotos', { placeId, photos }, HOST_TIMEOUT_MS),
+  placeStatus: () => sdk.invoke<PlaceView | null>('splat.placeStatus', undefined, HOST_TIMEOUT_MS),
+  placeCancel: () => sdk.invoke<unknown>('splat.placeCancel', undefined, HOST_TIMEOUT_MS),
   openSettings: (page: 'video' | 'theia') => sdk.invoke<unknown>('settings.open', { page }, HOST_TIMEOUT_MS),
   /** This app's own blob in the host's mirror (doc 73): survives the window's origin changing. */
   stateGet: () => sdk.invoke<{ state?: Record<string, unknown> | null }>('state.get', undefined, HOST_TIMEOUT_MS),
@@ -79,6 +106,14 @@ export const doors = {
   /** A picture the person picks in the system's dialog: its path, or null when the dialog was closed. No deadline. */
   selectImage: (filterName: string, startIn?: string) =>
     sdk.invoke<string | null>('dialog.selectFile', { filters: [{ name: filterName, extensions: IMAGE_EXTENSIONS }], ...(startIn ? { startIn } : {}) }, 0),
+  /** A folder the person picks in the system's dialog: its path, or null when the dialog was closed. No deadline. */
+  selectFolder: () => sdk.invoke<string | null>('dialog.selectFolder', {}, 0),
+  /** What a folder holds, with each file's date on disk (`dialog.readDir`); anything else is an error with the host's reason. */
+  readDir: async (dirPath: string): Promise<DirEntry[]> => {
+    const res = await sdk.invoke<{ success?: boolean; files?: DirEntry[]; error?: string }>('dialog.readDir', { dirPath }, HOST_TIMEOUT_MS);
+    if (res?.success && Array.isArray(res.files)) return res.files;
+    throw new Error(res?.error ?? 'NOT_A_FOLDER');
+  },
   /** A picture on disk as a data URL (`dialog.readFile`); anything else is an error with the host's reason. */
   readPicture: async (path: string): Promise<string> => {
     const res = await sdk.invoke<{ success?: boolean; content?: string; isBinary?: boolean; error?: string }>('dialog.readFile', { filePath: path }, HOST_TIMEOUT_MS);
@@ -103,6 +138,18 @@ export const doors = {
     return res?.granted?.[permission] === true;
   },
 };
+
+/** One entry of a folder as the host lists it; `statFailed`: its date and size could not be read (they are 0). */
+/** A placement of day photos as the host shows it: each photo's viewpoint when done. */
+export interface PlaceView {
+  placeId: string;
+  photos: string[];
+  step: 'preparing' | 'features' | 'matching' | 'placing' | 'done' | 'failed' | 'cancelled';
+  placed: Array<{ photo: string; centre: [number, number, number]; look: [number, number, number]; up: [number, number, number] }> | null;
+  error: string | null;
+}
+
+export interface DirEntry { name: string; isDirectory: boolean; path: string; sizeBytes?: number; mtime?: number; statFailed?: boolean }
 
 /** A picture on credits takes up to a few minutes; the host's own bound is 200 s. */
 const IMAGE_TIMEOUT_MS = 210_000;

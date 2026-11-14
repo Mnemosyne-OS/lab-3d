@@ -41,7 +41,16 @@ import {
   type Held, type Look, type WalkKey, type WalkZone,
 } from '../core/walkModel';
 import type { Rig } from '../core/stageModel';
+import { flightAt, flightMs, type EyeAt } from '../core/flightModel';
 import { buildFloor, groundOfMesh, type Floor } from './floor';
+
+type Vec3 = [number, number, number];
+
+/** An eye in the scene's frame: where it stands, the way it looks (a unit vector). */
+export interface Eye { position: Vec3; dir: Vec3 }
+
+/** A point of the scene on screen, in CSS pixels from the stage's top-left corner. */
+export interface OnScreen { x: number; y: number; inFront: boolean; distance: number }
 import { fovForAspect, frameDistance, robustBounds, sampleStride, type Bounds } from './frameModel';
 
 export const STAGE_FOV = 50;
@@ -143,6 +152,10 @@ export class SplatStage {
   private relief: { mesh: THREE.Mesh; depth: DepthPicture; offset: [number, number, number]; dist: number; azimuth: number; behind: THREE.Texture | null } | null = null;
   private reshapeTimer: number | null = null;
   private walk: Walk | null = null;
+  /** A flight to a spot of the day (Une journée): the eye glides, the person's input waits. */
+  private flight: { from: EyeAt; to: EyeAt; t0: number; ms: number; done: (arrived: boolean) => void } | null = null;
+  /** Told after each frame drawn: what sits over the scene follows the camera. */
+  private frameListener: (() => void) | null = null;
 
   constructor(private readonly el: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
@@ -180,6 +193,7 @@ export class SplatStage {
         this.stepWalk();
         this.renderer.clear();
         this.renderer.render(this.scene, this.camera);
+        this.frameListener?.();
         return;
       }
       const c = this.controls;
@@ -218,6 +232,7 @@ export class SplatStage {
         this.renderer.clearDepth();
       }
       this.renderer.render(this.scene, this.camera);
+      this.frameListener?.();
     };
     loop();
   }
@@ -288,6 +303,8 @@ export class SplatStage {
       return a && b ? Math.hypot(a.x - b.x, a.y - b.y) / Math.max(1, Math.min(this.el.clientWidth, this.el.clientHeight)) : null;
     };
     const down = (e: PointerEvent) => {
+      // The person takes the eye back: a flight in progress stops where it is.
+      this.cancelFlight();
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       el.setPointerCapture?.(e.pointerId);
       w.pinch = spread();
@@ -310,6 +327,7 @@ export class SplatStage {
     };
     const wheel = (e: WheelEvent) => {
       e.preventDefault();
+      this.cancelFlight();
       if (e.deltaY !== 0) this.pushWalk(pushOf(zone, w.look, (e.deltaY < 0 ? 1 : -1) * WHEEL_SECONDS));
     };
     const menu = (e: Event) => e.preventDefault();
@@ -320,6 +338,7 @@ export class SplatStage {
       if (!k || typing(e.target) || this.el.clientWidth === 0 || e.ctrlKey || e.metaKey || e.altKey) return;
       // Arrows and Page keys would scroll the page under the scene.
       e.preventDefault();
+      this.cancelFlight();
       keys.add(k);
     };
     const keyup = (e: KeyboardEvent) => {
@@ -356,6 +375,8 @@ export class SplatStage {
   }
 
   private leaveWalk(): void {
+    // A flight belongs to the visit.
+    this.cancelFlight();
     this.walk?.detach();
     this.walk = null;
     this.controls.enabled = true;
@@ -367,6 +388,20 @@ export class SplatStage {
     const now = performance.now();
     const dt = Math.min(MAX_FRAME_S, Math.max(0, (now - w.last) / 1000));
     w.last = now;
+    const f = this.flight;
+    if (f) {
+      const u = Math.min(1, (now - f.t0) / f.ms);
+      const at = flightAt(f.from, f.to, u);
+      this.camera.position.set(...at.position);
+      w.look = at.look;
+      w.velocity = [0, 0, 0];
+      this.aimWalk();
+      if (u >= 1) {
+        this.flight = null;
+        f.done(true);
+      }
+      return;
+    }
     const keys = heldOf(w.keys);
     const held: Held = {
       forward: Math.sign(keys.forward + w.pad.forward), side: Math.sign(keys.side + w.pad.side),
@@ -406,6 +441,74 @@ export class SplatStage {
     w.look = s.look;
     this.camera.position.set(...s.position);
     this.aimWalk();
+  }
+
+  /** Where the eye stands and the way it looks, in the scene's frame; null with nothing on stage. */
+  eye(): Eye | null {
+    if (!this.mesh) return null;
+    const p = this.camera.position;
+    if (this.walk) return { position: [p.x, p.y, p.z], dir: lookDir(this.walk.zone.basis, this.walk.look) };
+    const t = this.controls.target;
+    const d = new THREE.Vector3(t.x - p.x, t.y - p.y, t.z - p.z);
+    if (d.lengthSq() === 0) this.camera.getWorldDirection(d);
+    d.normalize();
+    return { position: [p.x, p.y, p.z], dir: [d.x, d.y, d.z] };
+  }
+
+  /** The size of the place the walk measures (its zone's scale); null when the scene cannot be walked. */
+  placeScale(): number | null {
+    return this.rig ? walkZone(this.rig)?.scale ?? null : null;
+  }
+
+  /**
+   * Fly the eye to `to`, walking (a scene that can be walked is entered
+   * first). Resolves true on arrival, false when it could not start or was
+   * stopped: a newer flight, the person's drag, wheel or walk key, leaving the
+   * visit. The duration follows the distance unless `ms` is given.
+   */
+  flyTo(to: Eye, ms?: number): Promise<boolean> {
+    if (!this.walk && this.setMode('walk') !== 'walk') return Promise.resolve(false);
+    const w = this.walk!;
+    this.cancelFlight();
+    const p = this.camera.position;
+    const from: EyeAt = { position: [p.x, p.y, p.z], look: w.look };
+    const end: EyeAt = { position: clampToZone(w.zone, to.position), look: lookOf(w.zone.basis, to.dir, w.look.yaw) };
+    const duration = Math.max(1, ms ?? flightMs(from, end, w.zone.scale));
+    return new Promise<boolean>((resolve) => {
+      this.flight = { from, to: end, t0: performance.now(), ms: duration, done: resolve };
+    });
+  }
+
+  /** Stop a flight where the eye is now. */
+  stopFlight(): void {
+    this.cancelFlight();
+  }
+
+  private cancelFlight(): void {
+    const f = this.flight;
+    this.flight = null;
+    f?.done(false);
+  }
+
+  /** Where points of the scene fall on screen now, read after the last frame drawn. */
+  project(points: readonly Vec3[]): OnScreen[] {
+    const v = new THREE.Vector3();
+    const w = this.el.clientWidth;
+    const h = this.el.clientHeight;
+    return points.map((pt) => {
+      v.set(...pt);
+      const distance = v.distanceTo(this.camera.position);
+      v.applyMatrix4(this.camera.matrixWorldInverse);
+      // In the camera's frame the eye looks down −z: a point at z ≥ 0 is behind it.
+      const inFront = v.z < 0;
+      v.applyMatrix4(this.camera.projectionMatrix);
+      return { x: ((v.x + 1) / 2) * w, y: ((1 - v.y) / 2) * h, inFront, distance };
+    });
+  }
+
+  /** Who is told after each frame drawn (null: nobody). */
+  setFrameListener(cb: (() => void) | null): void {
+    this.frameListener = cb;
   }
 
   /** Where the camera stands now. */
@@ -710,6 +813,8 @@ export class SplatStage {
     if (this.disposed) return;
     this.disposed = true;
     cancelAnimationFrame(this.raf);
+    this.frameListener = null;
+    this.cancelFlight();
     this.resize.disconnect();
     this.unload();
     this.controls.dispose();

@@ -25,6 +25,24 @@ export function formatMs(ms: number, lang: string): string {
   return ms < 1000 ? `${Math.round(ms)} ms` : `${new Intl.NumberFormat(lang, { maximumFractionDigits: 1 }).format(ms / 1000)} s`;
 }
 
+/** An hour of the day as the language writes it (« 14:05 », « 02:05 PM »). */
+export function formatHour(t: number, lang: string): string {
+  try { return new Date(t).toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit' }); }
+  catch (err) { console.warn('[lab-3d] time not formatted in this language:', lang, err); return new Date(t).toTimeString().slice(0, 5); }
+}
+
+/** « 14:05 » as an <input type="time"> wants it, whatever the language. */
+export function formatInputTime(t: number): string {
+  const d = new Date(t);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/** The singular or the plural text, as the language counts `n` (French: 0 is singular, English: plural). */
+export function pluralOf(n: number, lang: string, one: string, other: string): string {
+  try { return new Intl.PluralRules(lang).select(n) === 'one' ? one : other; }
+  catch (err) { console.warn('[lab-3d] plural rules unknown for this language:', lang, err); return n === 1 ? one : other; }
+}
+
 /** The share done so far, as « 42 % »; empty when the total is unknown. */
 export function percent(loaded: number, total: number): string {
   return total > 0 ? `${Math.min(100, Math.round((loaded / total) * 100))} %` : '';

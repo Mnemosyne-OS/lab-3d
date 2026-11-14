@@ -8,6 +8,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { words } from '../i18n/words';
 import type { JobView, ObjectEntry } from '../core/model';
 import type { EngineStatus } from '../host/doors';
+import { RIG, piecesOf } from '../features/objects/fakeHost.test-util';
 
 vi.mock('../features/viewer/ViewerTab', () => ({ ViewerTab: () => <div data-testid="viewer" /> }));
 vi.mock('./useHost', () => ({ useHost: () => ({ kind: 'mnemosyne', capabilities: [], platform: 'win32' }) }));
@@ -22,7 +23,13 @@ vi.mock('../host/doors', async (orig) => {
 });
 vi.mock('../engine/SplatStage', () => ({
   SplatStage: class {
-    async load() { return { splats: 1, grounded: false, viewpoints: 0, walkable: false, mode: 'orbit', viewAt: 0 }; }
+    async load(_b: Uint8Array, _n: string, opts: { onDecoded?: () => void } = {}) {
+      opts.onDecoded?.();
+      return { splats: 1, grounded: false, viewpoints: 0, walkable: false, mode: 'orbit', viewAt: 0 };
+    }
+    // What a day's spots ask of the scene.
+    placeScale() { return 1; } project(p: unknown[]) { return p.map(() => ({ x: 0, y: 0, inFront: false, distance: 1 })); }
+    setFrameListener() {} setPad() {} stopFlight() {} eye() { return null; } async flyTo() { return false; }
     setAutoRotate() {} resetView() {} close() {} dispose() {}
   },
 }));
@@ -61,7 +68,9 @@ describe('App, the two galleries', () => {
     setup(engine(), 'viewer');
     expect(screen.getByRole('tab', { name: w.tabs.objects })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: w.tabs.places })).toBeInTheDocument();
-    expect(screen.getAllByRole('tab')).toHaveLength(6);
+    // Viewer, Objects, Places, One day, Decor, Paintings, Compare: no Create among them.
+    expect(screen.getByRole('tab', { name: w.tabs.day })).toBeInTheDocument();
+    expect(screen.getAllByRole('tab')).toHaveLength(7);
   });
 
   it('the engine is asked once a gallery is opened, never before', async () => {
@@ -104,6 +113,37 @@ describe('App, the two galleries', () => {
     // Back in the places, the button says the job is being made.
     fireEvent.click(screen.getByRole('button', { name: new RegExp(`^${w.tabs.places}`) }));
     expect(await screen.findByRole('button', { name: w.create.jobRunning })).toBeInTheDocument();
+  });
+
+  it('the day asks the engine too: a place being built is said by its guide, whose button shows the job', async () => {
+    setup(engine(job({})), 'day');
+    fireEvent.click(await screen.findByRole('button', { name: w.day.guide.buildingGo }));
+    expect(screen.getByRole('tab', { name: w.tabs.places })).toHaveAttribute('aria-selected', 'true');
+    expect(await screen.findByText('jardin.mp4')).toBeInTheDocument();
+  });
+
+  it('the guide\'s « film another place » opens the places\' Create, not the objects\'', async () => {
+    setup(engine(), 'day');
+    fireEvent.click(await screen.findByRole('button', { name: w.day.guide.otherPlace }));
+    expect(screen.getByRole('tab', { name: w.tabs.places })).toHaveAttribute('aria-selected', 'true');
+    expect(await screen.findByText(w.create.videoSubPlace)).toBeInTheDocument();
+  });
+
+  it('at the end of a day, « scan the tattoo » opens the objects\' Create, not the places\'', async () => {
+    const JARDIN = '20261022-090000-jardin';
+    localStorage.setItem('lab3d.days.v1', JSON.stringify({ days: [{ id: 'd1', placeId: JARDIN, placeName: 'jardin', createdAt: 1,
+      spots: [{ id: 'sA', name: 'Stand A', pose: { position: [0, 0, 0], dir: [1, 0, 0] }, createdAt: 0 }], moments: [] }] }));
+    localStorage.setItem('lab3d.day.current', 'd1');
+    setup(engine(), 'day');
+    host.read.mockImplementation(piecesOf({
+      [`${JARDIN}/cameras.json`]: JSON.stringify(RIG),
+      [`${JARDIN}/manifest.json`]: JSON.stringify({ scope: 'place', files: { scene: 'scene.spz' } }),
+      [`${JARDIN}/scene.spz`]: new Uint8Array([1, 2]),
+    }));
+    fireEvent.click(await screen.findByRole('button', { name: w.day.guide.endDay }));
+    fireEvent.click(screen.getByRole('button', { name: w.day.guide.scanTattoo }));
+    expect(screen.getByRole('tab', { name: w.tabs.objects })).toHaveAttribute('aria-selected', 'true');
+    expect(await screen.findByRole('radiogroup', { name: w.create.scope })).toBeInTheDocument();
   });
 
   it('a finished job reads the libraries again, and « look at it » opens it in its gallery', async () => {

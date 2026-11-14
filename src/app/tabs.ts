@@ -14,7 +14,7 @@
  * @module app/tabs
  */
 
-export const TAB_IDS = ['viewer', 'objects', 'places', 'decor', 'painting', 'compare'] as const;
+export const TAB_IDS = ['viewer', 'objects', 'places', 'day', 'decor', 'painting', 'compare'] as const;
 export type TabId = (typeof TAB_IDS)[number];
 
 export interface TabSpec { id: TabId; needsHost: boolean; bleed: boolean }
@@ -23,6 +23,8 @@ export const TABS: readonly TabSpec[] = [
   { id: 'viewer', needsHost: false, bleed: true },
   { id: 'objects', needsHost: true, bleed: true },
   { id: 'places', needsHost: true, bleed: true },
+  // One day in a place: the place filmed empty, the day's photos laid in it, a timeline.
+  { id: 'day', needsHost: true, bleed: true },
   { id: 'decor', needsHost: true, bleed: true },
   { id: 'painting', needsHost: true, bleed: true },
   { id: 'compare', needsHost: true, bleed: true },

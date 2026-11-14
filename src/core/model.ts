@@ -75,6 +75,10 @@ export interface JobView {
   liveStep?: number | null;
   /** Brush stopped early and its object at that step was kept (doc 176 §18). Absent from an older host. */
   trainStopped?: { step: number; reason: 'GPU_LOST' | 'TRAIN_FAILED' | 'KEPT'; detail: string } | null;
+  /** A paused object resumed: the step Brush started again from; absent from an older host, null otherwise. */
+  trainFrom?: number | null;
+  /** A place completed by a day's photos: the photos asked and how many COLMAP placed (null until measured). */
+  added?: { of: number; placed: number | null } | null;
   /** Brush writes a file every this many steps, its first sign of progress. Absent from an older host. */
   trainExportEvery?: number;
   /** A job from photos stopped at placing: the person's photos COLMAP left out. Absent from an older host. */
@@ -139,6 +143,11 @@ export interface ObjectEntry {
   versionOf?: string;
   /** The version its object shows: declared by the person, else the newest. Absent from an older host. */
   main?: boolean;
+  /**
+   * Stopped at `step` of the `of` it was started with, by « Pause » (KEPT) or a crash: it can be
+   * resumed. Absent from an older host; `reason` absent from a host that only listed pauses.
+   */
+  paused?: { step: number; of: number; reason?: 'KEPT' | 'GPU_LOST' | 'TRAIN_FAILED' } | null;
 }
 
 /** One object and its versions (`Redo` makes a new version, doc 163). */
@@ -152,6 +161,16 @@ export interface VersionGroup { key: string; main: ObjectEntry; versions: Object
  * A host older than versions says nothing: each object is then its own group,
  * as before.
  */
+/**
+ * The version an object id is shown as: the main of the group it belongs to
+ * (a place paused then resumed is one place, its newest version shown), the
+ * id itself when it is in no group listed. Every version of a group shares one
+ * COLMAP model, so a spot pinned on one stands on the others.
+ */
+export function mainVersionOf(objects: ObjectEntry[], id: string): string {
+  return groupVersions(objects).find((g) => g.versions.some((v) => v.id === id))?.main.id ?? id;
+}
+
 export function groupVersions(objects: ObjectEntry[]): VersionGroup[] {
   const groups = new Map<string, ObjectEntry[]>();
   for (const o of [...objects].sort((a, b) => b.id.localeCompare(a.id))) {
@@ -247,14 +266,16 @@ export function trainPct(job: JobView): number | null {
  * pace says it should be done (an estimate past zero is not a time).
  */
 export function trainTiming(
-  v: { trainStep: number | null; trainStepAt?: number | null; trainSteps: number; stepStartedAt: number },
+  v: { trainStep: number | null; trainStepAt?: number | null; trainSteps: number; stepStartedAt: number; trainFrom?: number | null },
   now: number,
 ): { sinceMs: number; leftMs: number | null } | null {
   if (v.trainStepAt == null || v.trainStep === null) return null;
   const sinceMs = Math.max(0, now - v.trainStepAt);
   const spent = v.trainStepAt - v.stepStartedAt;
-  if (v.trainStep <= 0 || spent <= 0) return { sinceMs, leftMs: null };
-  const left = ((v.trainSteps - v.trainStep) * spent) / v.trainStep - sinceMs;
+  // A resumed job inherits the steps of its pause: only the steps of this run were measured.
+  const done = v.trainStep - (v.trainFrom ?? 0);
+  if (done <= 0 || spent <= 0) return { sinceMs, leftMs: null };
+  const left = ((v.trainSteps - v.trainStep) * spent) / done - sinceMs;
   return { sinceMs, leftMs: left > 0 ? left : null };
 }
 

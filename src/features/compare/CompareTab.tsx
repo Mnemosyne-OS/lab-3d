@@ -167,9 +167,13 @@ export function CompareTab({ w, lang, host, refreshKey = 0, active = true }: {
       starting.current = false;
     }
   };
+  // One stop at a time: a second click before the host's new state asked to stop a job already stopped.
+  const [stopping, setStopping] = useState(false);
   const cancelAlign = async () => {
+    if (stopping) return;
+    setStopping(true);
     try { await doors.alignCancel(); } catch (e) { console.warn('[lab-3d] alignment not stopped:', e); say(e); }
-    await refreshJob();
+    try { await refreshJob(); } finally { setStopping(false); }
   };
 
   const gap = LABEL_PX / Math.max(1, friseWidth * 0.92);
@@ -249,7 +253,7 @@ export function CompareTab({ w, lang, host, refreshKey = 0, active = true }: {
       <div className="decor-stage">{stageScreen}</div>
       <aside className="decor-side" aria-label={w.compare.panel}>
         <HudPanel index="05" title={w.compare.panel}>
-          <StepRail label={w.compare.panel} steps={compareRail(guide, { dates: w.compare.dates, align: w.compare.align, view: w.compare.view }, {
+          <StepRail label={w.compare.panel} working={guide.align === 'running'} steps={compareRail(guide, { dates: w.compare.dates, align: w.compare.align, view: w.compare.view }, {
             dates: apart ?? undefined,
             align: a ? w.compare.verdict[a.verdict] : guide.align === 'running' && job ? w.compare.alignStep[job.step] : undefined,
           })} />
@@ -329,7 +333,7 @@ export function CompareTab({ w, lang, host, refreshKey = 0, active = true }: {
               <div className="align-run">
                 <span>{w.compare.alignStep[job.step]}</span>
                 <span className="mono">{clock(Date.now() - job.startedAt)}</span>
-                <button onClick={() => void cancelAlign()}><Stop size={14} />{w.compare.stop}</button>
+                <button disabled={stopping} aria-busy={stopping} onClick={() => void cancelAlign()}><Stop size={14} />{w.compare.stop}</button>
               </div>
             )}
             {jobHere && job?.step === 'failed' && job.error && (

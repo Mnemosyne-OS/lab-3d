@@ -1,6 +1,6 @@
 {
   "name": "@mnemosyne-plugins/lab-3d",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "Lab 3D: a catalogue of 3D experiments (video to 3D object, decors in relief, a splat viewer) that runs in any browser and lights up its integrated engines inside Mnemosyne OS (doc 166).",

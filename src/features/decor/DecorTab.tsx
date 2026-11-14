@@ -298,7 +298,7 @@ export function DecorTab({ w, lang, host, refreshKey = 0, active = true }: {
       </div>
       <aside className="decor-side" aria-label={w.decor.panel}>
         <HudPanel index="04" title={w.decor.panel}>
-          <StepRail label={w.decor.panel} steps={guideRail(guide, { object: w.decor.object, decor: w.decor.decor, scene: w.decor.scene }, {
+          <StepRail label={w.decor.panel} working={view.kind === 'loading' || decorView.state === 'loading'} steps={guideRail(guide, { object: w.decor.object, decor: w.decor.decor, scene: w.decor.scene }, {
             object: view.kind === 'ready' ? formatCount(view.info.splats, lang) : undefined,
             decor: chosenEntry ? decorName(chosenEntry, w.decor.presets, w.decor.picked) : undefined,
             scene: guide.framed ? w.decor.framed : undefined,

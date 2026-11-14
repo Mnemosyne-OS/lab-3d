@@ -153,3 +153,13 @@ describe('versions', () => {
     expect(groupVersions([entry('b'), entry('a')]).map((g) => [g.key, g.main.id, g.versions.length])).toEqual([['b', 'b', 1], ['a', 'a', 1]]);
   });
 });
+
+describe('trainTiming of a resumed job', () => {
+  it('counts only the steps of this run: the pause\'s steps were not measured now', () => {
+    // 1 000 new steps in 4 min from step 4 000: 55 000 left at that pace is 220 min, not 49.
+    const v = { trainStep: 5_000, trainStepAt: 4 * 60_000, trainSteps: 60_000, stepStartedAt: 0, trainFrom: 4_000 };
+    expect(Math.round(trainTiming(v, 4 * 60_000)!.leftMs! / 60_000)).toBe(220);
+    // Before a step past the start, no pace is known.
+    expect(trainTiming({ ...v, trainStep: 4_000 }, 4 * 60_000)!.leftMs).toBeNull();
+  });
+});

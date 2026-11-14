@@ -1,5 +1,5 @@
 /**
- * StageOverlay — what sits over a scene on stage: the lit frame corners, the
+ * StageOverlay — what sits over a scene on stage: the
  * readout of what was measured, the tools in the top-right corner (✕ last),
  * the mouse hint, and what a tab adds over the scene (the walk's pad).
  * Shared by every tab that shows a scene. A row marked minor is left out on a
@@ -15,7 +15,6 @@ export function StageOverlay({ rows, tools, hint, children }: {
 }) {
   return (
     <div className="overlay">
-      <span className="frame-corner tl" /><span className="frame-corner tr" /><span className="frame-corner bl" /><span className="frame-corner br" />
       <HudPanel className="readout">
         <dl>
           {rows.map(([label, value, minor]) => (

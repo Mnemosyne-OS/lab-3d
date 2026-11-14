@@ -189,6 +189,15 @@ describe('CreateTab', () => {
     expect(host.frames).not.toHaveBeenCalled();
   });
 
+  it('photos being read are said as photos, not as a video, and the head is one line of steps', async () => {
+    host.status.mockResolvedValue(engine({ job: job({ step: 'frames', source: 'photos', scope: 'place', video: 'C:/App/series/s1', framesSeen: 83 }) }));
+    host.frames.mockResolvedValue({ names: [] });
+    const { container } = renderTab(MNEMO, 'places');
+    expect(await screen.findByText(w.create.photosPhase)).toBeInTheDocument();
+    expect(screen.queryByText(w.create.phase.frames)).not.toBeInTheDocument();
+    expect(container.querySelector('.job-head')).toHaveClass('compact');
+  });
+
   it('the back button leads to the gallery, named as the tab is', async () => {
     host.status.mockResolvedValue(engine());
     const { onBack } = renderTab(MNEMO, 'places');
@@ -305,6 +314,21 @@ describe('CreateTab', () => {
     expect(clock.textContent).not.toBe(before);
   });
 
+  it('the step rail turns while the engine works and is still while it waits on the person (style-cartouche §7)', async () => {
+    host.status.mockResolvedValue(engine({ job: job({ step: 'needsConfirm', framesKept: 100, posesPlaced: 100, coverageDeg: 125 }) }));
+    host.read.mockRejectedValue(new Error('NOT_FOUND'));
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { container, unmount } = renderTab();
+    await screen.findByText(new RegExp('125° filmed around'));
+    expect(container.querySelector('.job-head .rail')).toHaveClass('still');
+    unmount();
+    host.status.mockResolvedValue(engine({ job: job({ step: 'poses', framesKept: 100, framesTotal: 484 }) }));
+    host.frames.mockResolvedValue({ names: [] });
+    const again = renderTab();
+    expect(await screen.findByText('100 / 484')).toBeInTheDocument();
+    expect(again.container.querySelector('.job-head .rail')).not.toHaveClass('still');
+  });
+
   it('a short turn waits for a decision and continues on it', async () => {
     host.status.mockResolvedValue(engine({ job: job({ step: 'needsConfirm', framesKept: 100, posesPlaced: 100, coverageDeg: 125 }) }));
     host.read.mockRejectedValue(new Error('NOT_FOUND'));
@@ -373,6 +397,88 @@ describe('CreateTab', () => {
     renderTab();
     fireEvent.click(await screen.findByRole('button', { name: w.create.keepNow }));
     await waitFor(() => expect((host as unknown as { keepNow: ReturnType<typeof vi.fn> }).keepNow).toHaveBeenCalledWith('job-1'));
+  });
+
+  it('« Keep it now » pressed three times asks the host once, and waits for its answer', async () => {
+    let answer: (v: unknown) => void = () => {};
+    const keepNow = vi.fn(() => new Promise((r) => { answer = r; }));
+    (host as unknown as { keepNow: typeof keepNow }).keepNow = keepNow;
+    host.status.mockResolvedValue(engine({ job: job({ step: 'train', trainStep: 4_000, trainSteps: 60_000, liveStep: 4_000 }) }));
+    host.frames.mockResolvedValue({ names: [] });
+    host.read.mockRejectedValue(new Error('NOT_FOUND'));
+    renderTab();
+    const keep = await screen.findByRole('button', { name: w.create.keepNow });
+    fireEvent.click(keep);
+    fireEvent.click(keep);
+    fireEvent.click(keep);
+    const waiting = await screen.findByRole('button', { name: w.create.acting });
+    expect(waiting).toBeDisabled();
+    expect(screen.getByRole('button', { name: new RegExp(w.create.stop) })).toBeDisabled();
+    expect(keepNow).toHaveBeenCalledTimes(1);
+    host.status.mockResolvedValue(engine({ job: job({ step: 'done' }) }));
+    await act(async () => { answer({ success: true }); });
+    await waitFor(() => expect(screen.queryByRole('button', { name: w.create.acting })).not.toBeInTheDocument());
+    expect(keepNow).toHaveBeenCalledTimes(1);
+  });
+
+  it('a resumed job offers no « Pause » before Brush wrote a step past its start, and says where it resumed', async () => {
+    host.status.mockResolvedValue(engine({ job: job({ step: 'train', trainStep: 4_000, trainSteps: 60_000, trainFrom: 4_000, liveStep: null }) }));
+    host.frames.mockResolvedValue({ names: [] });
+    host.read.mockRejectedValue(new Error('NOT_FOUND'));
+    renderTab();
+    expect(await screen.findByText(new RegExp(fill(w.create.resumedFrom, { step: '4.000' }).replace(/[.]/g, '.?').replace('4.?000', '4.?000')))).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: w.create.keepNow })).not.toBeInTheDocument();
+  });
+
+  it('a paused job, done, goes on from its step in one click', async () => {
+    const resume = vi.fn().mockResolvedValue(job({ step: 'train' }));
+    (host as unknown as { resume: typeof resume }).resume = resume;
+    host.status.mockResolvedValue(engine({ job: job({ step: 'done', trainStep: 4_000, trainSteps: 60_000, trainStopped: { step: 4_000, reason: 'KEPT', detail: '' } }) }));
+    host.frames.mockResolvedValue({ names: [] });
+    renderTab();
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(w.create.resumeAt.replace('{step}', '4.?000')) }));
+    await waitFor(() => expect(resume).toHaveBeenCalledTimes(1));
+  });
+
+  it('shown again, it reads the host: a job started while hidden is shown, never the finished one before it', async () => {
+    // The paused job, done, as the view last read it; then « Resume » in the viewer started its resume.
+    host.status.mockResolvedValue(engine({ job: job({ step: 'done', trainStep: 4_000, trainSteps: 60_000, trainStopped: { step: 4_000, reason: 'KEPT', detail: '' } }) }));
+    host.frames.mockResolvedValue({ names: [] });
+    host.read.mockRejectedValue(new Error('NOT_FOUND'));
+    const onView = vi.fn(); const onBack = vi.fn(); const onShowJob = vi.fn();
+    const { rerender } = render(<Held h={MNEMO} gallery="objects" shown={false} onView={onView} onBack={onBack} onShowJob={onShowJob} />);
+    await waitFor(() => expect(host.status).toHaveBeenCalledTimes(1));
+    host.status.mockResolvedValue(engine({ job: job({ id: 'job-2', step: 'train', trainStep: 4_000, trainSteps: 60_000, trainFrom: 4_000, liveStep: null }) }));
+    rerender(<Held h={MNEMO} gallery="objects" shown onView={onView} onBack={onBack} onShowJob={onShowJob} />);
+    await waitFor(() => expect(host.status).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText(new RegExp(w.create.resumedFrom.replace('{step}', '4.?000')))).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: new RegExp(w.create.resumeAt.replace('{step}', '4.?000')) })).not.toBeInTheDocument();
+  });
+
+  it('a job stopped by a crash with steps left offers to resume from its step, as a pause does', async () => {
+    const resume = vi.fn().mockResolvedValue(job({ step: 'train' }));
+    (host as unknown as { resume: typeof resume }).resume = resume;
+    host.status.mockResolvedValue(engine({ job: job({ step: 'done', trainStep: 7_000, trainSteps: 60_000, trainStopped: { step: 7_000, reason: 'GPU_LOST', detail: '' } }) }));
+    host.frames.mockResolvedValue({ names: [] });
+    renderTab();
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(w.create.resumeAt.replace('{step}', '7.?000')) }));
+    await waitFor(() => expect(resume).toHaveBeenCalledTimes(1));
+  });
+
+  it('a job that ended between the click and the host is not an error', async () => {
+    (host as unknown as { keepNow: ReturnType<typeof vi.fn> }).keepNow = vi.fn().mockRejectedValue(new Error('NO_SUCH_JOB'));
+    host.status.mockResolvedValue(engine({ job: job({ step: 'train', trainStep: 4_000, trainSteps: 60_000, liveStep: 4_000 }) }));
+    host.frames.mockResolvedValue({ names: [] });
+    host.read.mockRejectedValue(new Error('NOT_FOUND'));
+    renderTab();
+    fireEvent.click(await screen.findByRole('button', { name: w.create.keepNow }));
+    await waitFor(() => expect(screen.getByRole('button', { name: w.create.keepNow })).toBeEnabled());
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('« Nothing to keep » is said in words, never as a code', () => {
+    expect(w.create.errors.NOTHING_TO_KEEP).toBeTruthy();
+    expect(words('fr').create.errors.NOTHING_TO_KEEP).toMatch(/Rien à garder/);
   });
 
   it('a build the card gave up on says it in words, and makes it again on Quick in one click', async () => {

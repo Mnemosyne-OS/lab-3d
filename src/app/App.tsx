@@ -13,7 +13,7 @@
  */
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { HostBadge } from '../ui/HostBadge';
-import { Blend, Cube, Grid, Landscape, Mark, Painting, Walk } from '../ui/Icon';
+import { Blend, Clock, Cube, Grid, Landscape, Mark, Painting, Walk } from '../ui/Icon';
 import { TabBar, type TabItem } from '../ui/TabBar';
 import { words } from '../i18n/words';
 import { inMnemosyne } from '../host/hostState';
@@ -26,12 +26,13 @@ import { galleryOf, type Gallery } from '../features/objects/libraryModel';
 import { DecorTab } from '../features/decor/DecorTab';
 import { CompareTab } from '../features/compare/CompareTab';
 import { PaintingTab } from '../features/painting/PaintingTab';
+import { DayTab } from '../features/day/DayTab';
 import { readChoice, safeLocalStorage, writeChoice } from '../lib/choiceStore';
 import { TABS, TAB_IDS, TAB_STORAGE_KEY, type TabId } from './tabs';
 import { useHost } from './useHost';
 import { useLang } from './useLang';
 
-const ICONS: Record<TabId, ReactNode> = { viewer: <Cube size={16} />, objects: <Grid size={16} />, places: <Walk size={16} />, decor: <Landscape size={16} />, painting: <Painting size={16} />, compare: <Blend size={16} /> };
+const ICONS: Record<TabId, ReactNode> = { viewer: <Cube size={16} />, objects: <Grid size={16} />, places: <Walk size={16} />, day: <Clock size={16} />, decor: <Landscape size={16} />, painting: <Painting size={16} />, compare: <Blend size={16} /> };
 
 const isGallery = (id: TabId): id is Gallery => id === 'objects' || id === 'places';
 
@@ -46,9 +47,10 @@ export function App() {
   const [creating, setCreating] = useState<Record<Gallery, boolean>>({ objects: false, places: false });
   const showCreate = (g: Gallery, on: boolean) => setCreating((c) => (c[g] === on ? c : { ...c, [g]: on }));
 
-  // The engine is asked once a gallery was opened, never before.
+  // The engine is asked once a gallery or the day was opened, never before:
+  // the day's guide waits for a place being built.
   const [engineAsked, setEngineAsked] = useState(false);
-  if (!engineAsked && isGallery(tab)) setEngineAsked(true);
+  if (!engineAsked && (isGallery(tab) || tab === 'day')) setEngineAsked(true);
   const { status, refresh } = useEngine(host !== null && inMnemosyne(host) && engineAsked);
   const job = status.state === 'ready' ? status.engine.job : null;
   const liveGallery = job && isLive(job) ? galleryOf(job.scope) : null;
@@ -80,6 +82,12 @@ export function App() {
     switch (id) {
       case 'viewer': return <ViewerTab w={w} lang={lang} />;
       case 'objects': case 'places': return galleryPanel(id);
+      case 'day': return (
+        <DayTab w={w} lang={lang} host={host} active={tab === 'day'} refreshKey={libraryRound} onGoPlaces={() => pick('places')}
+          onCreatePlace={() => { showCreate('places', true); pick('places'); }}
+          onCreateObject={() => { showCreate('objects', true); pick('objects'); }}
+          placeBuilding={liveGallery === 'places'} />
+      );
       case 'decor': return <DecorTab w={w} lang={lang} host={host} active={tab === 'decor'} refreshKey={libraryRound} />;
       case 'painting': return <PaintingTab w={w} lang={lang} host={host} active={tab === 'painting'} />;
       case 'compare': return <CompareTab w={w} lang={lang} host={host} active={tab === 'compare'} refreshKey={libraryRound} />;

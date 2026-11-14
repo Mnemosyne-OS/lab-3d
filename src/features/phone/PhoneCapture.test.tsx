@@ -104,6 +104,19 @@ describe('PhoneCapture', () => {
     expect(screen.getByRole('button', { name: w.phone.addMore })).toBeInTheDocument();
   });
 
+  it('a series that is a moment of a day is never offered first, and says what putting it away does', async () => {
+    const day = { id: 'd', placeId: 'p', placeName: 'hall', createdAt: 0, spots: [], moments: [
+      { id: 'm', at: 1, atFrom: 'series', spotId: null, dir: 'C:\\App\\series\\old', names: ['001.jpg'], source: 'phone' },
+    ] };
+    localStorage.setItem('lab3d.days.v1', JSON.stringify({ days: [day] }));
+    phone.status.mockResolvedValue(idle({ series: [{ id: 'old', photos: 25, startedAt: null, dir: 'C:\\App\\series\\old' }] }));
+    render(<PhoneCapture w={w} gallery="objects" onCreate={vi.fn()} />);
+    const card = await screen.findByRole('radio', { name: new RegExp(w.phone.inDay) });
+    expect(screen.queryByRole('button', { name: w.phone.createObject })).toBeNull();
+    fireEvent.click(card);
+    expect(await screen.findByText(w.phone.inDayWarn)).toBeInTheDocument();
+  });
+
   it('« Put them away » asks where, and a closed folder dialog leaves the series waiting', async () => {
     phone.status.mockResolvedValue(idle({ series: [{ id: 'old', photos: 25, startedAt: null, dir: 'C:\\App\\series\\old' }] }));
     phone.destinations.mockResolvedValue({ vaults: [] });
@@ -291,6 +304,21 @@ describe('PhoneCapture', () => {
     expect(await screen.findByAltText(w.phone.scan)).toBeInTheDocument();
     r.unmount();
     render(<PhoneCapture w={w} gallery="objects" onCreate={vi.fn()} />);
+    expect(await screen.findByAltText(w.phone.certTitle)).toBeInTheDocument();
+  });
+
+  it('« Don’t ask again » shows the series QR and is remembered, the certificate still shown on request', async () => {
+    phone.status.mockResolvedValue(open({ caUrl: 'http://192.168.1.101:50001/mnemosyne-os.crt' }));
+    const r = render(<PhoneCapture w={w} gallery="objects" onCreate={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: w.phone.certNever }));
+    expect(await screen.findByAltText(w.phone.scan)).toBeInTheDocument();
+    r.unmount();
+    render(<PhoneCapture w={w} gallery="objects" onCreate={vi.fn()} />);
+    expect(await screen.findByAltText(w.phone.scan)).toBeInTheDocument();
+    expect(screen.queryByAltText(w.phone.certTitle)).toBeNull();
+    // Not trusted: the phone's warning is still explained, and the certificate can be shown.
+    expect(screen.getByText(w.phone.warning)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: w.phone.certShow }));
     expect(await screen.findByAltText(w.phone.certTitle)).toBeInTheDocument();
   });
 

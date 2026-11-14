@@ -7,6 +7,9 @@
  * Leaving the screen closes an open series: its photos wait, as in the
  * Create view. A refused permission stops every read (doc 176, verifier T1).
  *
+ * « Une journée » (doc 166 §16) takes its moments through the same screen,
+ * with its own title, hint and back button (`texts`).
+ *
  * @module features/painting/PaintingPhone
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -19,6 +22,7 @@ import { Retry } from '../../ui/Icon';
 import { describeError } from '../create/createModel';
 import { CertQr, QrImage, ScanSteps } from '../phone/PhoneCapture';
 import { usePhoneCert } from '../phone/phoneCert';
+import { FirewallCheck } from '../phone/FirewallCheck';
 import { showNoPhoneHint } from '../phone/phoneModel';
 
 const POLL_MS = 1000;
@@ -28,8 +32,10 @@ type Loaded =
   | { state: 'error'; refused: boolean; detail: string }
   | { state: 'ready'; status: PhoneStatus };
 
-export function PaintingPhone({ w, platform = null, onTaken, onCancel }: {
+export function PaintingPhone({ w, platform = null, onTaken, onCancel, texts }: {
   w: Dict;
+  /** The screen's title, its one-line hint and its back button; a painting's when absent (the day's moments use their own). */
+  texts?: { title: string; hint: string; back: string };
   /** The host's OS: on Windows the firewall asks at the first series, and the screen says so. */
   platform?: string | null;
   /** The series closed at Done, with the folder its photos wait in. */
@@ -37,6 +43,7 @@ export function PaintingPhone({ w, platform = null, onTaken, onCancel }: {
   onCancel: () => void;
 }) {
   const p = w.phone;
+  const labels = texts ?? { title: w.painting.phoneTitle, hint: w.painting.phoneHint, back: w.painting.back };
   const [loaded, setLoaded] = useState<Loaded>({ state: 'loading' });
   const [address, setAddress] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -118,9 +125,9 @@ export function PaintingPhone({ w, platform = null, onTaken, onCancel }: {
     onTaken({ ...listed, dir: listed.dir });
   });
 
-  const cancel = <button disabled={busy} onClick={onCancel}>{w.painting.back}</button>;
+  const cancel = <button disabled={busy} onClick={onCancel}>{labels.back}</button>;
 
-  if (loaded.state === 'loading') return <Notice scanning>{w.painting.phoneTitle}</Notice>;
+  if (loaded.state === 'loading') return <Notice scanning>{labels.title}</Notice>;
   if (loaded.state === 'error') {
     return (
       <Notice>
@@ -139,12 +146,12 @@ export function PaintingPhone({ w, platform = null, onTaken, onCancel }: {
   if (st.active && st.url) {
     return (
       <div className="pane phone">
-        <HudPanel title={w.painting.phoneTitle}>
+        <HudPanel title={labels.title}>
           <div className="phone-grid">
             {cert.certFirst ? <CertQr w={w} url={st.caUrl!} onDone={cert.done} /> : <QrImage url={st.url} label={p.scan} />}
             <div className="phone-side">
               <div className="phone-count"><strong>{st.count}</strong> <span>{p.count}</span></div>
-              <div className="phone-target">{w.painting.phoneHint}</div>
+              <div className="phone-target">{labels.hint}</div>
               <div className={st.phoneSeen ? 'phone-seen on' : 'phone-seen'}>{st.phoneSeen ? p.phoneHere : p.waitingPhone}</div>
               <ScanSteps w={w} certFirst={cert.certFirst} trusted={cert.trusted} />
               <div className="phone-address-label">{p.address}</div>
@@ -183,8 +190,8 @@ export function PaintingPhone({ w, platform = null, onTaken, onCancel }: {
   const chosen = address && st.addresses.some((a) => a.address === address) ? address : st.addresses[0]!.address;
   return (
     <div className="pane phone">
-      <HudPanel title={w.painting.phoneTitle}>
-        <p className="decor-note">{w.painting.phoneHint}</p>
+      <HudPanel title={labels.title}>
+        <p className="decor-note">{labels.hint}</p>
         {st.addresses.length > 1 && (
           <div className="opt-group" role="radiogroup" aria-label={p.pickAddress}>
             <span className="opt-label">{p.pickAddress}</span>
@@ -198,7 +205,7 @@ export function PaintingPhone({ w, platform = null, onTaken, onCancel }: {
             </div>
           </div>
         )}
-        {platform === 'win32' && <div className="create-why">{p.firewall}</div>}
+        <FirewallCheck w={w} address={chosen} platform={platform} />
         <div className="phone-actions">
           <button className="primary" disabled={busy} onClick={() => void run('start', async () => { await phoneDoors.start(chosen); })}>
             {busy ? p.opening : p.open}

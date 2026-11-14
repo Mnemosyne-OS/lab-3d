@@ -52,6 +52,14 @@ export const ChevronDown = ({ size }: { size?: number }) => <Svg size={size}><pa
 /** Someone walking: the visit inside a scene. */
 export const Walk = ({ size }: { size?: number }) => <Svg size={size}><circle cx="13" cy="4.5" r="1.8" /><path d="M10.5 21l2-6.5-2.5-2.5 1-4.5 3.5 2.5 2.5.5" /><path d="M11 8l-3.5 1.5-1 3.5" /><path d="M12.5 14.5l2.5 2.5v4" /></Svg>;
 export const Retry = ({ size }: { size?: number }) => <Svg size={size}><path d="M4 12a8 8 0 1 0 2.3-5.6" /><path d="M4 4v4h4" /></Svg>;
+/** A clock: one day in a place, its hours on a timeline. */
+export const Clock = ({ size }: { size?: number }) => <Svg size={size}><circle cx="12" cy="12" r="8.5" /><path d="M12 7v5l3.5 2" /></Svg>;
+export const Play = ({ size }: { size?: number }) => <Svg size={size}><path d="M8 5.5v13l10.5-6.5z" /></Svg>;
+/** A pin: a spot of the day, where the person stood. */
+export const Pin = ({ size }: { size?: number }) => <Svg size={size}><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z" /><circle cx="12" cy="10" r="2.3" /></Svg>;
+export const Folder = ({ size }: { size?: number }) => <Svg size={size}><path d="M3.5 7.5A1.5 1.5 0 0 1 5 6h4.2l2 2.2H19a1.5 1.5 0 0 1 1.5 1.5v7.8A1.5 1.5 0 0 1 19 19H5a1.5 1.5 0 0 1-1.5-1.5z" /></Svg>;
+export const Help = ({ size }: { size?: number }) => <Svg size={size}><circle cx="12" cy="12" r="9" /><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17.2v.1" /></Svg>;
+export const Trash = ({ size }: { size?: number }) => <Svg size={size}><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12" /></Svg>;
 /** The tile sizes, as Finder and Explorer draw them: nine, four, one. */
 export const GridSmall = ({ size }: { size?: number }) => (
   <Svg size={size}><rect x="3" y="3" width="4.5" height="4.5" rx="1" /><rect x="9.75" y="3" width="4.5" height="4.5" rx="1" /><rect x="16.5" y="3" width="4.5" height="4.5" rx="1" /><rect x="3" y="9.75" width="4.5" height="4.5" rx="1" /><rect x="9.75" y="9.75" width="4.5" height="4.5" rx="1" /><rect x="16.5" y="9.75" width="4.5" height="4.5" rx="1" /><rect x="3" y="16.5" width="4.5" height="4.5" rx="1" /><rect x="9.75" y="16.5" width="4.5" height="4.5" rx="1" /><rect x="16.5" y="16.5" width="4.5" height="4.5" rx="1" /></Svg>
@@ -65,9 +73,9 @@ export const GridLarge = ({ size }: { size?: number }) => <Svg size={size}><rect
 export function Mark({ size = 30 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" fill="none" aria-hidden>
-      <circle cx="16" cy="16" r="14" stroke="var(--lab-cyan)" strokeWidth="1.4" opacity="0.55" />
-      <circle cx="16" cy="16" r="9.5" stroke="var(--lab-cyan)" strokeWidth="1.6" strokeDasharray="4 3" />
-      <circle cx="16" cy="16" r="4.2" fill="var(--lab-green)" />
+      <circle cx="16" cy="16" r="14" stroke="var(--accent-info-text, rgba(140, 190, 255, 0.85))" strokeWidth="1.4" opacity="0.55" />
+      <circle cx="16" cy="16" r="9.5" stroke="var(--accent-info-text, rgba(140, 190, 255, 0.85))" strokeWidth="1.6" strokeDasharray="4 3" />
+      <circle cx="16" cy="16" r="4.2" fill="var(--accent, #7c4dff)" />
     </svg>
   );
 }

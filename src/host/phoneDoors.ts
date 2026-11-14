@@ -44,6 +44,9 @@ export interface PhoneStatus {
   series: PhoneSeries[];
 }
 
+/** Whether Windows' firewall lets a phone in on the series' network. */
+export interface FirewallView { state: 'open' | 'closed' | 'unknown'; network: string | null; vpn: string[] }
+
 export interface PhoneDestination { workspaceId: string; name: string; protection: string | null }
 
 /** Where a placed series is: the folder `splat.start` reads as `photosDir`. */
@@ -67,5 +70,11 @@ export const phoneDoors = {
   deliverToNewVault: (seriesId: string, name: string) => sdk.invoke<Placed>('phoneCapture.deliverToNewVault', { seriesId, name }, MOVE_TIMEOUT_MS),
   /** Opens the system's folder dialog: no deadline. Null when it was closed. */
   deliverToFolder: (seriesId: string) => sdk.invoke<Placed | null>('phoneCapture.deliverToFolder', { seriesId }, 0),
+  /** Can a phone reach this PC on `address` (Windows' firewall), and the VPNs up: about 2 to 4 s. */
+  firewall: (address: string) => sdk.invoke<FirewallView>('phoneCapture.firewall', { address }, 20_000),
+  /** Windows asks the person for an administrator's yes: waits on them. ELEVATION_REFUSED on a no. */
+  allowFirewall: () => sdk.invoke<null>('phoneCapture.allowFirewall', undefined, 170_000),
+  /** Some photos of a closed series to the bin, the others renumbered 001, 002…: answers how many are left. */
+  removePhotos: (seriesId: string, names: readonly string[], seen: number) => sdk.invoke<{ photos: number }>('phoneCapture.removePhotos', { seriesId, names, seen }, 610_000),
   discard: (seriesId: string) => sdk.invoke<null>('phoneCapture.discard', { seriesId }, HOST_TIMEOUT_MS),
 };

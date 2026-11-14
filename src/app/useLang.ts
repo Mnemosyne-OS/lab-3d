@@ -1,7 +1,7 @@
 /**
  * useLang — the language the app speaks: the host's inside Mnemosyne OS, the
- * browser's on its own. The host's look is NOT applied (`apply: false`): Lab 3D
- * brings its own dark stage wherever it runs (tokens.css).
+ * browser's on its own. Only the language is read here (`apply: false`): the
+ * host's theme is applied once, by onHostConfig() in main.tsx.
  *
  * @module app/useLang
  */

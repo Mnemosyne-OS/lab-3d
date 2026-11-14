@@ -131,7 +131,7 @@ export function CreateForm({ w, gallery, quality, scope, frames, presets, object
         {!phone && <div className="create-why">{w.phone.needsUpdate}</div>}
         {error && <div className="error-line" role="alert">{error}</div>}
         <HudPanel index="04" title={w.create.pipeline} className="pipeline-preview">
-          <StepRail label={w.create.pipeline} steps={steps} />
+          <StepRail label={w.create.pipeline} steps={steps} working={false} />
         </HudPanel>
       </div>
     </div>

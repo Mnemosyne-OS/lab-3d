@@ -24,10 +24,11 @@ import { LoadPanel } from '../stage/LoadPanel';
 import { StageOverlay, ToolButton } from '../stage/StageOverlay';
 import { useSceneLoader } from '../stage/useSceneLoader';
 import { WalkPad } from '../stage/WalkPad';
+import { BuildBar } from './BuildBar';
 import { Library } from './Library';
 import { FILTERS, FILTER_KEY, GRID_SIZES, GRID_SIZE_KEY, galleryGroups, galleryKey, type Filter, type Gallery, type GridSize } from './libraryModel';
 import { loadScene } from './sceneLoad';
-import { useObjects } from './useObjects';
+import { removeGroup, useObjects } from './useObjects';
 
 export function ObjectsTab({ w, lang, host, gallery = 'objects', refreshKey = 0, openId = null, onOpenHandled, active = true, onCreate, jobLive = false }: {
   w: Dict; lang: string; host: HostState | null;
@@ -165,6 +166,8 @@ export function ObjectsTab({ w, lang, host, gallery = 'objects', refreshKey = 0,
         )}
       >
         {walking && <WalkPad w={w} onHold={(h) => loader.stage.current?.setPad(h)} />}
+        {/* Also while walking: a place opens inside, and after a restart the viewer is where a pause is resumed. */}
+        {onCreate && <BuildBar w={w} lang={lang} o={o} live={jobLive} onShowJob={() => { loader.close(); onCreate(); }} />}
       </StageOverlay>
     );
   } else if (objects.state === 'loading') {
@@ -188,6 +191,7 @@ export function ObjectsTab({ w, lang, host, gallery = 'objects', refreshKey = 0,
     screen = (
       <div className="pane">
         <Library groups={groups} w={w} lang={lang} title={galleryName} onOpen={open} action={createButton} showScope={gallery === 'objects'}
+          onRemove={(g) => removeGroup(g, retry)}
           size={size} onSize={(s) => { setSize(s); writeChoice(safeLocalStorage(), sizeKey, s); }}
           filter={filter} onFilter={(f) => { setFilter(f); writeChoice(safeLocalStorage(), FILTER_KEY, f); }} />
       </div>

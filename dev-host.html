@@ -23,7 +23,9 @@
     ?lang=en|fr|es    the host's language (default fr)
     ?align=fresh      no pair aligned yet: « Put them in one frame » runs the simulation
     ?alignStep=features|matching|placing|measuring  an alignment frozen at that step
-    ?phone=1          the phone capture (doc 176): two waiting series, the older one
+    ?folder=none      « Une journée »: the folder dialog is closed (else it picks a folder of
+                    the apartment's frames, dated across today)
+  ?phone=1          the phone capture (doc 176): two waiting series, the older one
                       already made into 3D (named after a fixture's folder); its photos
                       are the running object's frames
 
@@ -57,14 +59,26 @@ const phoneState = { active: false, count: 0, startedAt: null, seriesId: null, s
   ...(objects[0] ? [{ id: objects[0].id.slice(16), photos: 76, startedAt: Date.now() - 2 * 86400e3 }] : []),
   { id: '2026-10-26_11-40-58', photos: 72, startedAt: null },
 ].map((x) => ({ ...x, dir: SERIES_DIR + x.id })) };
+// The phone « takes » one photo a second while a series is open, 40 at most: Done can be pressed.
+const liveCount = () => (phoneState.active ? phoneState.count + Math.min(40, Math.floor((Date.now() - phoneState.startedAt) / 1000)) : 0);
 const phoneStatus = () => ({
   active: phoneState.active, url: phoneState.active ? 'https://192.168.1.101:50000/c/' + 'a'.repeat(32) : null,
-  address: phoneState.active ? '192.168.1.101' : null, seriesId: phoneState.seriesId, count: phoneState.count,
+  address: phoneState.active ? '192.168.1.101' : null, seriesId: phoneState.seriesId, count: liveCount(),
   phoneSeen: phoneState.active, startedAt: phoneState.startedAt, lastPhotoAt: null,
   // The PC's certificate (doc 176 §22); ?trusted=1: the phone already trusts it.
   caUrl: phoneState.active ? 'http://192.168.1.101:50001/mnemosyne-os.crt' : null, phoneTrusted: phoneState.active && q.has('trusted') ? true : null,
   addresses: [{ name: 'Wi-Fi', address: '192.168.1.101' }], series: phoneState.series,
 });
+// « Une journée »: the folder the system's dialog « picks » holds some frames of the filmed
+// apartment, dated across today as if photographed at its spots (?folder=none: the dialog is closed).
+const DAY_PLACE = '20261023-120827-pexels-36958639-appartement';
+const DAY_DIR = 'C:/Users/tony/Pictures/convention';
+function dayPhotos() {
+  const fr = index.dirs[DAY_PLACE]?.frames ?? [];
+  const at = (h, m) => { const d = new Date(); d.setHours(h, m, 0, 0); return d.getTime(); };
+  const pick = [[10, 2, 70], [10, 4, 72], [10, 6, 74], [11, 31, 76], [11, 33, 78], [13, 12, 80], [15, 45, 20], [15, 47, 22]];
+  return pick.filter(([, , i]) => fr[i]).map(([h, m, i]) => ({ name: fr[i], isDirectory: false, path: `${DAY_DIR}/${fr[i]}`, sizeBytes: 300000, mtime: at(h, m), ctime: at(h, m) }));
+}
 // The décor the host « draws » and the file dialog « picks »: Tony's oak table, drawn once on credits.
 const DECOR = 'C:/Users/tony/.mnemosyne/generations/gen-1792727294771-1b74157f.png';
 let hostState = null;
@@ -184,17 +198,37 @@ async function answer(action, p) {
       return phoneStatus();
     }
     case 'phoneCapture.stop': {
-      // The phone « took » 34 photos meanwhile.
-      const closed = { id: phoneState.seriesId, photos: phoneState.count + 34, startedAt: phoneState.startedAt, dir: SERIES_DIR + phoneState.seriesId };
+      // The photos the phone « took » meanwhile, one a second.
+      const closed = { id: phoneState.seriesId, photos: Math.max(1, liveCount()), startedAt: phoneState.startedAt, dir: SERIES_DIR + phoneState.seriesId };
       phoneState.series = [...phoneState.series.filter((x) => x.id !== closed.id), closed];
       Object.assign(phoneState, { active: false, count: 0, startedAt: null, seriesId: null });
       return closed;
     }
+    // ?fwclosed: Windows blocks phones on this network until « Allow the phone ».
+    case 'phoneCapture.firewall': await new Promise((r) => setTimeout(r, 800)); return { state: q.has('fwclosed') && !phoneState.fwOpen ? 'closed' : 'open', network: 'Public', vpn: q.has('vpn') ? ['ProtonVPN'] : [] };
+    case 'phoneCapture.allowFirewall': await new Promise((r) => setTimeout(r, 1500)); if (q.has('fwrefuse')) throw new Error('ELEVATION_REFUSED'); phoneState.fwOpen = true; return null;
     case 'phoneCapture.destinations': return { vaults: [] };
     case 'phoneCapture.discard': phoneState.series = phoneState.series.filter((x) => x.id !== p.seriesId); return null;
     case 'splat.list':
       if (q.has('refused')) throw new Error('Unauthorized: This cartridge does not have the "dialog:open" permission.');
       return { objects };
+    case 'splat.remove': {
+      const i = objects.findIndex((o) => o.id === p.id);
+      if (i < 0) throw new Error('NO_SUCH_OBJECT');
+      objects.splice(i, 1);
+      return { removed: p.id };
+    }
+    // The placement of a day's photos (doc 166 §16): « done » 3 s later, every other photo placed
+    // along the first filmed viewpoints; ?noplace: none placed.
+    case 'splat.placePhotos': phoneState.place = { placeId: p.placeId, photos: p.photos, at: Date.now() }; return { ...phoneState.place, step: 'preparing', placed: null, error: null };
+    case 'splat.placeStatus': {
+      const j = phoneState.place;
+      if (!j) return null;
+      if (Date.now() - j.at < 3000) return { placeId: j.placeId, photos: j.photos, step: 'placing', placed: null, error: null };
+      const placed = q.has('noplace') ? [] : j.photos.filter((_, i) => i % 2 === 0).map((photo, i) => ({ photo, centre: [i * 0.6, 0, 0], look: [0, 0, 1], up: [0, -1, 0] }));
+      return { placeId: j.placeId, photos: j.photos, step: 'done', placed, error: null };
+    }
+    case 'splat.placeCancel': phoneState.place = null; return { ok: true };
     case 'splat.read': {
       // The running job's live preview and extraction folder, as main names them.
       let file = p.file === 'work/exports/live.spz' ? 'scene.spz' : p.file.replace(/^work\/all\//, 'frames-all/');
@@ -245,8 +279,18 @@ async function answer(action, p) {
       // Like the image engine v15: every depth here is upright (made from the picture as it is shown).
       return { path: String(p.path).replace(/\.(png|jpe?g)$/i, '-depth.png'), upright: true };
     }
+    case 'dialog.selectFolder': return q.get('folder') === 'none' ? null : DAY_DIR;
+    case 'dialog.readDir':
+      return String(p.dirPath).replace(/\\/g, '/').startsWith(DAY_DIR) ? { success: true, files: dayPhotos() } : { success: false, error: 'Directory does not exist' };
     case 'dialog.readFile': {
       if (levels.has(p.filePath)) return { success: true, isBinary: true, content: levels.get(p.filePath) };
+      // A photo of the day's folder: the apartment's frame of that name.
+      if (String(p.filePath).replace(/\\/g, '/').startsWith(DAY_DIR + '/')) {
+        const res = await fetch(F + DAY_PLACE + '/frames/' + String(p.filePath).split(/[\\/]/).pop());
+        if (!res.ok) return { success: false, error: 'NOT_FOUND' };
+        const blob = await res.blob();
+        return { success: true, isBinary: true, content: await new Promise((r) => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(blob); }) };
+      }
       // A photo of a waiting phone series: the running object's frame of the same number.
       const shot = /series[\\/][^\\/]+[\\/](\d{3})\.jpg$/.exec(String(p.filePath));
       if (shot && dirs.frames?.length) {

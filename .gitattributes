@@ -1,0 +1,11 @@
+# The published repo holds a built dist/: line endings stay LF, binaries are never normalised.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gz binary
+*.bin binary
+*.wasm binary
+*.spz binary
+*.ply binary

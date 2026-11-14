@@ -11,6 +11,7 @@
  * @module features/decor/decorStore
  */
 import { doors } from '../../host/doors';
+import { writeMirrorKey } from '../../host/mirror';
 import { DECOR_MODELS, aspectFor, decorPrompt, parseDecorState, type DecorEntry, type DecorPreset, type DecorQuality, type DecorState } from '../../core/decorModel';
 
 export const DECOR_KEY = 'lab3d.decors.v1';
@@ -48,7 +49,8 @@ export async function readDecorState(): Promise<DecorRead> {
 export async function writeDecorState(s: DecorState): Promise<void> {
   try { localStorage.setItem(DECOR_KEY, JSON.stringify(s)); }
   catch (err) { console.warn('[lab-3d] décors: not kept in this window:', err); }
-  try { await doors.stateSet({ decor: s }); }
+  // The days share the blob (host/mirror): only this key is changed.
+  try { await writeMirrorKey('decor', s); }
   catch (err) { console.warn('[lab-3d] décors: not kept in the host copy:', err); }
 }
 

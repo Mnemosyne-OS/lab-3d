@@ -143,7 +143,7 @@ export function PosesView({ job, id, w, lang, now }: ViewProps) {
 }
 
 /** The cameras COLMAP placed, from above, and the turn measured; a short turn waits for a decision here. */
-export function TurnView({ job, id, w, lang, onAct }: ViewProps & { onAct: (a: 'continue' | 'cancel') => void }) {
+export function TurnView({ job, id, w, lang, onAct, acting = false }: ViewProps & { onAct: (a: 'continue' | 'cancel') => void; acting?: boolean }) {
   const rig = useRig(id, job.coverageDeg !== null || job.step === 'needsConfirm');
   const short = job.step === 'needsConfirm';
   return (
@@ -158,8 +158,8 @@ export function TurnView({ job, id, w, lang, onAct }: ViewProps & { onAct: (a: '
           <>
             <p className="warn-line">{job.coverageDeg === null ? w.create.coverageUnknown : fill(w.create.coverageShort, { deg: job.coverageDeg })}</p>
             <div className="side-actions">
-              <button className="primary" onClick={() => onAct('continue')}>{w.create.continue}</button>
-              <button onClick={() => onAct('cancel')}>{w.create.stop}</button>
+              <button className="primary" disabled={acting} aria-busy={acting} onClick={() => onAct('continue')}>{acting ? w.create.acting : w.create.continue}</button>
+              <button disabled={acting} onClick={() => onAct('cancel')}>{w.create.stop}</button>
             </div>
           </>
         )}
@@ -250,7 +250,10 @@ export function TrainView({ job, id, w, lang, now }: ViewProps) {
 }
 
 /** Done: the object is there; one press shows it in the library. */
-export function DoneView({ job, id, w, lang, onView }: ViewProps & { onView: () => void }) {
+export function DoneView({ job, id, w, lang, onView, onResume, acting = false }: ViewProps & {
+  /** Paused: resume from its step, as a new version. */
+  onResume?: () => void;
+  acting?: boolean; onView: () => void }) {
   const kept = useFrameNames(id, 'frames', 'kept') ?? [];
   const cover = kept[Math.floor(kept.length / 3)];
   return (
@@ -269,6 +272,10 @@ export function DoneView({ job, id, w, lang, onView }: ViewProps & { onView: () 
         <Figure accent value={num(job.posesPlaced, lang)} label={fill(w.create.placedOf, { of: num(job.framesKept, lang) })} />
         {job.scope !== 'place' && <Figure value={job.coverageDeg === null ? '—' : `${job.coverageDeg}°`} label={w.create.turnFilmed} />}
         <button className="primary big" onClick={onView}><Cube size={18} />{w.create.view}</button>
+        {/* Paused by the person, or stopped by a crash, with steps left: it goes on from where it stopped, never from zero. */}
+        {onResume && job.trainStopped && job.trainStopped.step < job.trainSteps && (
+          <button disabled={acting} aria-busy={acting} onClick={onResume}>{acting ? w.create.acting : fill(w.create.resumeAt, { step: num(job.trainStopped.step, lang) })}</button>
+        )}
       </Side>
     </div>
   );

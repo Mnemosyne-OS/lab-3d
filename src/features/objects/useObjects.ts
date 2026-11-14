@@ -7,7 +7,7 @@
  */
 import { useEffect, useState } from 'react';
 import { doors, isPermissionRefusal } from '../../host/doors';
-import type { ObjectEntry } from '../../core/model';
+import type { ObjectEntry, VersionGroup } from '../../core/model';
 
 export type ObjectsState =
   | { state: 'loading' }
@@ -34,4 +34,17 @@ export function useObjects(enabled: boolean, refreshKey = 0): { objects: Objects
   }, [enabled, round, refreshKey]);
 
   return { objects, retry: () => setRound((r) => r + 1) };
+}
+
+/**
+ * Sends every version of a group to the bin, then reads the library again so
+ * it shows what is on disk, a version the bin refused included. Throws with
+ * the host's reason when one version stays.
+ */
+export async function removeGroup(g: VersionGroup, reread: () => void): Promise<void> {
+  try {
+    for (const v of g.versions) await doors.remove(v.id);
+  } finally {
+    reread();
+  }
 }

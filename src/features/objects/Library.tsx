@@ -3,20 +3,21 @@
  * a name each, in three sizes (the small one is the overview: picture and
  * name only), a filter by what was made when the gallery holds both kinds,
  * and the gallery's own action (Create) at the end of its bar. A press on a
- * tile puts the object on stage.
+ * tile puts the object on stage. With `onRemove`, each tile carries a bin
+ * button that asks once before sending the object (all its versions) away.
  *
  * @module features/objects/Library
  */
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { idDate, idName, scopeWord, type ObjectEntry, type VersionGroup } from '../../core/model';
 import { fill, type Dict } from '../../i18n/words';
-import { Check, Cube, GridLarge, GridMedium, GridSmall } from '../../ui/Icon';
+import { Check, Cube, GridLarge, GridMedium, GridSmall, Trash } from '../../ui/Icon';
 import { filterCounts, filterGroups, filterUseful, filtersShown, type Filter, type GridSize } from './libraryModel';
 import { useFileUrl } from '../../host/useHostFiles';
 
 const SIZE_ICONS: Record<GridSize, ReactNode> = { small: <GridSmall />, medium: <GridMedium />, large: <GridLarge /> };
 
-export function Library({ groups, w, lang, title, action, showScope = true, size, onSize, filter, onFilter, onOpen }: {
+export function Library({ groups, w, lang, title, action, showScope = true, size, onSize, filter, onFilter, onOpen, onRemove }: {
   groups: readonly VersionGroup[]; w: Dict; lang: string;
   /** The gallery's name. */
   title: string;
@@ -27,7 +28,27 @@ export function Library({ groups, w, lang, title, action, showScope = true, size
   size: GridSize; onSize: (s: GridSize) => void;
   filter: Filter; onFilter: (f: Filter) => void;
   onOpen: (o: ObjectEntry) => void;
+  /** Sends a whole group (every version) to the bin; throws with the host's reason. Absent: no bin button. */
+  onRemove?: (g: VersionGroup) => Promise<void>;
 }) {
+  const [asking, setAsking] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const remove = async (g: VersionGroup) => {
+    if (!onRemove) return;
+    setAsking(null);
+    setError(null);
+    setRemoving(g.key);
+    try {
+      await onRemove(g);
+    } catch (err) {
+      console.warn('[lab-3d] the object could not be deleted:', err);
+      const detail = err instanceof Error ? err.message : String(err);
+      setError(detail.includes('OBJECT_BUSY') ? w.objects.removeBusy : fill(w.objects.removeFailed, { detail }));
+    } finally {
+      setRemoving(null);
+    }
+  };
   const counts = filterCounts(groups);
   const useful = filterUseful(counts);
   // A remembered filter that no longer splits anything would hide objects for no reason.
@@ -60,8 +81,27 @@ export function Library({ groups, w, lang, title, action, showScope = true, size
         </div>
         {action}
       </header>
+      {error && <div className="error-line" role="alert">{error}</div>}
       <div className={`lib-grid size-${size}`}>
-        {shown.map((g) => <Tile key={g.key} o={g.main} versions={g.versions.length} w={w} lang={lang} small={size === 'small'} showScope={showScope} onOpen={() => onOpen(g.main)} />)}
+        {shown.map((g) => {
+          const tile = <Tile key={g.key} o={g.main} versions={g.versions.length} w={w} lang={lang} small={size === 'small'} showScope={showScope} onOpen={() => onOpen(g.main)} />;
+          if (!onRemove) return tile;
+          return (
+            <div key={g.key} className="tile-wrap">
+              {tile}
+              {asking === g.key ? (
+                <div className="tile-ask" role="group" aria-label={w.objects.removeSure}>
+                  <span>{w.objects.removeSure}</span>
+                  <button className="danger" onClick={() => void remove(g)}>{w.objects.removeYes}</button>
+                  <button onClick={() => setAsking(null)}>{w.objects.removeKeep}</button>
+                </div>
+              ) : (
+                <button className="tile-remove" title={w.objects.remove} aria-label={w.objects.remove}
+                  disabled={removing !== null} onClick={() => setAsking(g.key)}><Trash size={15} /></button>
+              )}
+            </div>
+          );
+        })}
       </div>
     </section>
   );

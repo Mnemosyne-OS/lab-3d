@@ -28,15 +28,18 @@ import { Check, Phone, Retry } from '../../ui/Icon';
 import { describeError } from '../create/createModel';
 import type { Gallery } from '../objects/libraryModel';
 import type { ObjectEntry } from '../../core/model';
-import { PhotoTile } from '../create/UnplacedPhotos';
 import { seriesPhotos } from '../painting/paintingModel';
-import { MAX_PHOTOS, MIN_PHOTOS, createVerdict, firstShown, madeFrom, sampleIndexes, seriesWhen, showNoPhoneHint, targetFor } from './phoneModel';
+import { MAX_PHOTOS, MIN_PHOTOS, createVerdict, firstShown, madeFrom, seriesWhen, showNoPhoneHint, targetFor } from './phoneModel';
+import { phoneSeriesInDays } from '../../core/dayModel';
+import { readDaysState } from '../day/dayStore';
 import { PlaceSeries } from './PlaceSeries';
-import { usePhoneCert } from './phoneCert';
+import { SeriesPhotos } from './SeriesPhotos';
+import { ShootTips } from './ShootTips';
+import { usePhoneCert, type CertChoice } from './phoneCert';
+import { FirewallCheck } from './FirewallCheck';
 
 const POLL_MS = 1000;
 /** The photos of a waiting series shown on the right, spread over it. */
-const SHOWN_PHOTOS = 12;
 
 type Loaded =
   | { state: 'loading' }
@@ -92,6 +95,20 @@ export function PhoneCapture({ w, lang = 'en', gallery, onCreate, continueSeries
       // Without the library every waiting series is offered as not made yet: nothing worse than before.
       (err: unknown) => console.warn('[lab-3d] library not read for the waiting series:', err),
     );
+    return () => { live = false; };
+  }, []);
+
+  // The series the days use (« Une journée », doc 166 §16): never offered first, said as such.
+  const [inDays, setInDays] = useState<Set<string>>(() => new Set());
+  // Until the days are read, no photo can leave a series: a day may hold its names.
+  const [daysRead, setDaysRead] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void readDaysState().then((r) => {
+      if (!live) return;
+      if (r.ok) { setInDays(phoneSeriesInDays(r.state)); setDaysRead(true); }
+      // Without the days every series is offered as before: the read already said why.
+    });
     return () => { live = false; };
   }, []);
 
@@ -213,6 +230,7 @@ export function PhoneCapture({ w, lang = 'en', gallery, onCreate, continueSeries
     // The counter and what to do on the left, the QR code to scan on the right: the certificate's first.
     return (
       <div className="pane phone split">
+        {gallery === 'places' && <ShootTips w={w} />}
         <HudPanel className="split-opts">
           <div className="phone-side">
             <div className="phone-count"><strong>{st.count}</strong> <span>{p.count}</span></div>
@@ -251,7 +269,7 @@ export function PhoneCapture({ w, lang = 'en', gallery, onCreate, continueSeries
 
   // The series shown on the right: the one picked, else the one just closed or
   // the newest not made into 3D yet. A new series asked shows none of the old ones.
-  const shownId = chosen !== undefined ? chosen : firstShown(st.series, (id) => madeOf(id) !== null, ready?.id ?? null, fresh || !!continuing);
+  const shownId = chosen !== undefined ? chosen : firstShown(st.series, (id) => madeOf(id) !== null || inDays.has(id), ready?.id ?? null, fresh || !!continuing);
   const shown = st.series.find((x) => x.id === shownId) ?? (ready && ready.id === shownId ? ready : null);
   if (shown && placing) {
     return (
@@ -293,7 +311,7 @@ export function PhoneCapture({ w, lang = 'en', gallery, onCreate, continueSeries
               </div>
             </div>
           )}
-          {platform === 'win32' && <div className="create-why">{p.firewall}</div>}
+          <FirewallCheck w={w} address={chosenAddress} platform={platform} />
           <div className="opt-group">
             <span className="opt-label">{continuing ? p.addMore : p.newSeries}</span>
             {going && <span className="phone-target">{fill(p.seriesOf, { date: when(seriesWhen(going)) })}</span>}
@@ -321,6 +339,7 @@ export function PhoneCapture({ w, lang = 'en', gallery, onCreate, continueSeries
                   <strong>{fill(p.seriesOf, { date: when(seriesWhen(x)) })}</strong>
                   <span>{fill(p.photosN, { n: x.photos })}</span>
                   {made && <span className="series-made">{fill(p.madeOn, { date: when(made.createdAt ? new Date(made.createdAt) : null) })}</span>}
+                  {inDays.has(x.id) && <span className="series-made">{p.inDay}</span>}
                 </button>
               );
             })}
@@ -339,6 +358,7 @@ export function PhoneCapture({ w, lang = 'en', gallery, onCreate, continueSeries
     visual = (
       <HudPanel title={fill(p.ready, { n: shown.photos })} aside={<span className="phone-target">{when(seriesWhen(shown))}</span>}>
         {made && <div className="create-why series-made">{fill(p.madeOn, { date: when(made.createdAt ? new Date(made.createdAt) : null) })}</div>}
+        {inDays.has(shown.id) && <div className="create-why" role="note">{p.inDayWarn}</div>}
         {verdict === 'tooFew' && <div className="create-why">{fill(p.tooFew, { min: MIN_PHOTOS, n: shown.photos })}</div>}
         {verdict === 'tooMany' && <div className="create-why">{fill(p.tooMany, { max: MAX_PHOTOS, n: shown.photos })}</div>}
         {engineBusy && <div className="create-why">{p.engineBusy}</div>}
@@ -351,9 +371,7 @@ export function PhoneCapture({ w, lang = 'en', gallery, onCreate, continueSeries
           <button disabled={busy} onClick={() => setPlacing(true)}>{p.putAway}</button>
         </div>
         {photos.length > 0 && (
-          <div className="frame-grid series-photos">
-            {sampleIndexes(photos.length, SHOWN_PHOTOS).map((i) => <PhotoTile key={photos[i]} path={photos[i]!} />)}
-          </div>
+          <SeriesPhotos w={w} seriesId={shown.id} photos={photos} locked={!daysRead || inDays.has(shown.id) || engineBusy} onRemoved={() => void read()} />
         )}
       </HudPanel>
     );
@@ -363,6 +381,7 @@ export function PhoneCapture({ w, lang = 'en', gallery, onCreate, continueSeries
 
   return (
     <div className="pane phone split">
+        {gallery === 'places' && <ShootTips w={w} />}
       {opts}
       <div className="split-visual">{visual}</div>
     </div>
@@ -393,8 +412,8 @@ export function ScanSteps({ w, certFirst, trusted }: { w: Dict; certFirst: boole
   );
 }
 
-/** The PC's certificate to scan, then « installed » (remembered) or « skip » (this screen only). */
-export function CertQr({ w, url, onDone }: { w: Dict; url: string; onDone: (installed: boolean) => void }) {
+/** The PC's certificate to scan, then « installed » (remembered), « skip » (this screen only) or « don't ask again » (remembered). */
+export function CertQr({ w, url, onDone }: { w: Dict; url: string; onDone: (choice: CertChoice) => void }) {
   const p = w.phone;
   return (
     // Plain, not a panel: it sits in a panel on the paintings' screen, and glass never goes on glass.
@@ -402,8 +421,9 @@ export function CertQr({ w, url, onDone }: { w: Dict; url: string; onDone: (inst
       <span className="opt-label">{p.certTitle}</span>
       <QrImage url={url} label={p.certTitle} />
       <div className="phone-actions">
-        <button className="primary" onClick={() => onDone(true)}>{p.certInstalled}</button>
-        <button onClick={() => onDone(false)}>{p.certSkip}</button>
+        <button className="primary" onClick={() => onDone('installed')}>{p.certInstalled}</button>
+        <button onClick={() => onDone('once')}>{p.certSkip}</button>
+        <button onClick={() => onDone('never')}>{p.certNever}</button>
       </div>
     </div>
   );

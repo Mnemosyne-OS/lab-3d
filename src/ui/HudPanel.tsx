@@ -1,5 +1,5 @@
 /**
- * HudPanel — a glass panel with lit corner brackets and an indexed title line.
+ * HudPanel — a card in the app's theme with an indexed title line.
  *
  * @module ui/HudPanel
  */
@@ -10,7 +10,6 @@ export function HudPanel({ index, title, children, className = '', aside }: {
 }) {
   return (
     <section className={`hud ${className}`} aria-label={title}>
-      <span className="corner tl" /><span className="corner tr" /><span className="corner bl" /><span className="corner br" />
       {title && (
         <header className="hud-head">
           {index && <span className="hud-index">{index}</span>}

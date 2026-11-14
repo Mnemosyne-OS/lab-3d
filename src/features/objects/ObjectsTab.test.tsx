@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { words } from '../../i18n/words';
 import type { ObjectEntry } from '../../core/model';
 import type { HostState } from '../../host/hostState';
 import { RIG, piecesOf } from './fakeHost.test-util';
 
-const host = vi.hoisted(() => ({ list: vi.fn(), read: vi.fn() }));
+const host = vi.hoisted(() => ({ list: vi.fn(), read: vi.fn(), remove: vi.fn(), resume: vi.fn() }));
 vi.mock('../../host/doors', () => ({
-  doors: { list: host.list, read: host.read },
+  doors: { list: host.list, read: host.read, remove: host.remove, resume: host.resume },
   isPermissionRefusal: (e: unknown) => /Unauthorized/.test(String(e)),
 }));
 
@@ -43,7 +43,7 @@ const LIST = [obj(VASE, 'object'), obj('20261021-110000-salon', 'scene'), obj('2
 
 describe('ObjectsTab', () => {
   afterEach(() => {
-    cleanup(); localStorage.clear(); host.list.mockReset(); host.read.mockReset();
+    cleanup(); localStorage.clear(); host.list.mockReset(); host.read.mockReset(); host.remove.mockReset();
     stage.loads = []; stage.at = 0; stage.start = 0; stage.modes = []; stage.pads = []; vi.restoreAllMocks();
   });
 
@@ -65,6 +65,36 @@ describe('ObjectsTab', () => {
     expect(screen.queryByText('vase')).not.toBeInTheDocument();
     expect(screen.getByText('salon')).toBeInTheDocument();
     expect(localStorage.getItem('lab3d.objectsFilter')).toBe('scene');
+  });
+
+  it('the bin asks once, then sends every version of the object away and reads the library again', async () => {
+    const v2 = { ...obj('20261022-100000-vase', 'object'), versionOf: VASE };
+    host.list.mockResolvedValueOnce({ objects: [...LIST, v2] }).mockResolvedValueOnce({ objects: LIST.slice(1) });
+    host.remove.mockResolvedValue({ removed: 'x' });
+    render(<ObjectsTab w={w} lang="en" host={MNEMO} />);
+    await screen.findByText('vase');
+    const bins = screen.getAllByRole('button', { name: w.objects.remove });
+    expect(bins).toHaveLength(3);
+    fireEvent.click(bins[0]);
+    fireEvent.click(screen.getByRole('button', { name: w.objects.removeKeep }));
+    expect(host.remove).not.toHaveBeenCalled();
+    fireEvent.click(screen.getAllByRole('button', { name: w.objects.remove })[0]);
+    fireEvent.click(within(screen.getByRole('group', { name: w.objects.removeSure })).getByRole('button', { name: w.objects.removeYes }));
+    await waitFor(() => expect(screen.queryByText('vase')).not.toBeInTheDocument());
+    expect(host.remove.mock.calls.map((c) => c[0]).sort()).toEqual([VASE, '20261022-100000-vase']);
+    expect(host.list).toHaveBeenCalledTimes(2);
+  });
+
+  it('an object being made is not deleted, and says so', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    host.list.mockResolvedValue({ objects: LIST });
+    host.remove.mockRejectedValue(new Error('OBJECT_BUSY'));
+    render(<ObjectsTab w={w} lang="en" host={MNEMO} />);
+    await screen.findByText('vase');
+    fireEvent.click(screen.getAllByRole('button', { name: w.objects.remove })[0]);
+    fireEvent.click(within(screen.getByRole('group', { name: w.objects.removeSure })).getByRole('button', { name: w.objects.removeYes }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(w.objects.removeBusy);
+    expect(screen.getByText('vase')).toBeInTheDocument();
   });
 
   it('a refused permission is said as such, and a retry asks again', async () => {
@@ -139,6 +169,26 @@ describe('ObjectsTab', () => {
     expect(stage.modes).toEqual(['walk', 'orbit']);
     expect(screen.queryByRole('group', { name: w.stage.pad })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: w.stage.rotate })).toBeInTheDocument();
+  });
+
+  it('a paused place, open and walked through, offers « Resume », which shows the job', async () => {
+    const SALLE = '20261113-185147-salle';
+    host.list.mockResolvedValue({ objects: [{ ...obj(SALLE, 'place'), paused: { step: 4_000, of: 60_000 } }] });
+    host.read.mockImplementation(piecesOf({
+      [`${SALLE}/cameras.json`]: JSON.stringify(RIG),
+      [`${SALLE}/manifest.json`]: JSON.stringify({ scope: 'place', files: { scene: 'scene.spz' } }),
+      [`${SALLE}/scene.spz`]: new Uint8Array([1]),
+    }));
+    host.resume.mockResolvedValue({ id: 'job' });
+    const onCreate = vi.fn();
+    render(<ObjectsTab w={w} lang="en" host={MNEMO} gallery="places" onCreate={onCreate} />);
+    fireEvent.click(await screen.findByRole('button', { name: /salle/ }));
+    await screen.findByText('4,321');
+    // A place opens walking: the bar is there all the same.
+    expect(screen.getByRole('button', { name: w.stage.walk })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: w.objects.resume }));
+    await waitFor(() => expect(onCreate).toHaveBeenCalled());
+    expect(host.resume).toHaveBeenCalledWith(SALLE);
   });
 
   it('a place opens inside, with its pad, as its manifest says', async () => {

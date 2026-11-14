@@ -379,7 +379,11 @@ export function PaintingTab({ w, lang = 'en', host, active = true }: {
     if (chosen === path) setChosen(next[0] ?? null);
   };
 
+  // One system dialog at a time: a second click while it opens would open another.
+  const [picking, setPicking] = useState(false);
   const onPick = async () => {
+    if (picking) return;
+    setPicking(true);
     try {
       const path = await doors.selectImage(w.painting.pictures);
       // The dialog was closed: nothing to add, nothing to say.
@@ -387,6 +391,8 @@ export function PaintingTab({ w, lang = 'en', host, active = true }: {
     } catch (err) {
       console.warn('[lab-3d] no painting chosen:', err);
       setView({ state: 'error', error: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setPicking(false);
     }
   };
 
@@ -420,7 +426,7 @@ export function PaintingTab({ w, lang = 'en', host, active = true }: {
         <div className="drop-title">{w.painting.title}</div>
         <p>{w.painting.intro}</p>
         <div className="phone-actions painting-start">
-          <button className="primary" onClick={() => void onPick()}><Upload size={16} />{w.painting.choose}</button>
+          <button className="primary" disabled={picking} onClick={() => void onPick()}><Upload size={16} />{w.painting.choose}</button>
           {withPhone && <button onClick={openPhone}><Phone size={16} />{w.painting.phone}</button>}
         </div>
       </Notice>
@@ -469,7 +475,7 @@ export function PaintingTab({ w, lang = 'en', host, active = true }: {
       {!wide && (
         <aside className="decor-side" aria-label={w.painting.panel}>
           <HudPanel index="05" title={w.painting.panel}>
-            <button className="primary painting-choose" onClick={() => void onPick()}><Upload size={16} />{w.painting.choose}</button>
+            <button className="primary painting-choose" disabled={picking} onClick={() => void onPick()}><Upload size={16} />{w.painting.choose}</button>
             {withPhone && <button className="painting-choose" onClick={openPhone}><Phone size={16} />{w.painting.phone}</button>}
             {placedNote && <p className="decor-note relief-on">{placedNote}</p>}
             {look === 'world' && <p className="decor-note relief-on">{fill(w.painting.worldNote, { n: masses })}</p>}

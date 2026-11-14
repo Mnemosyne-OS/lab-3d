@@ -1,12 +1,12 @@
 {
   "name": "@mnemosyne-plugins/lab-3d",
   "displayName": "Lab 3D",
-  "version": "0.1.0",
-  "category": "Creation",
+  "version": "0.2.0",
   "icon": "icon.svg",
-  "license": "MIT",
-  "repository": "https://github.com/Mnemosyne-OS/lab-3d",
   "updateStrategy": "git",
+  "repository": "https://github.com/Mnemosyne-OS/lab-3d",
+  "category": "Creation",
+  "license": "MIT",
   "description": "A catalogue of 3D experiments: a splat viewer that runs in any browser, and inside Mnemosyne OS the library of 3D objects and the engine that turns a video into one.",
   "descriptionI18n": {
     "en": "A catalogue of 3D experiments: a splat viewer that runs in any browser, and inside Mnemosyne OS the library of 3D objects and the engine that turns a video into one.",
